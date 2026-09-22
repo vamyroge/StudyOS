@@ -15,38 +15,77 @@ export default async function HistoryPage() {
   
   const supabase = await createClient();
 
-  // Fetch all conversations with message count
+  // Fetch conversations - limit to reasonable number
   const { data: conversations } = await supabase
     .from("conversations")
     .select("id, title, created_at, updated_at")
     .eq("user_id", user.id)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(50);
 
-  // Count messages per conversation
-  const conversationsWithDetails = await Promise.all(
-    (conversations || []).map(async (conv) => {
-      const { count } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("conversation_id", conv.id);
-      
-      // Get first message preview
-      const { data: firstMessage } = await supabase
-        .from("messages")
-        .select("content")
-        .eq("conversation_id", conv.id)
-        .eq("role", "user")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .single();
-      
-      return { 
-        ...conv, 
-        message_count: count || 0,
-        preview: firstMessage?.content || conv.title
-      };
-    })
-  );
+  if (!conversations || conversations.length === 0) {
+    return (
+      <ProtectedLayout>
+        <div className="container mx-auto max-w-5xl p-4 sm:p-6 lg:p-8 space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <HistoryIcon className="h-8 w-8 text-primary" />
+              Lịch sử hội thoại
+            </h1>
+            <p className="mt-2 text-muted-foreground">
+              Xem lại và quản lý các cuộc trò chuyện với AI Tutor
+            </p>
+          </div>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12">
+                <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">
+                  Chưa có cuộc hội thoại nào. Bắt đầu chat với AI Tutor!
+                </p>
+                <Link href="/tutor">
+                  <Button>
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Trò chuyện với AI
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </ProtectedLayout>
+    );
+  }
+
+  // Fetch all messages for these conversations in one query
+  const conversationIds = conversations.map(c => c.id);
+  const { data: allMessages } = await supabase
+    .from("messages")
+    .select("conversation_id, content, role, created_at")
+    .in("conversation_id", conversationIds)
+    .order("created_at", { ascending: true });
+
+  // Build lookup maps
+  const messageCountMap = new Map<string, number>();
+  const firstMessageMap = new Map<string, string>();
+  
+  (allMessages || []).forEach((msg: any) => {
+    // Count messages
+    const count = messageCountMap.get(msg.conversation_id) || 0;
+    messageCountMap.set(msg.conversation_id, count + 1);
+    
+    // Store first user message as preview
+    if (msg.role === "user" && !firstMessageMap.has(msg.conversation_id)) {
+      firstMessageMap.set(msg.conversation_id, msg.content);
+    }
+  });
+
+  const conversationsWithDetails = conversations.map(conv => ({
+    ...conv,
+    message_count: messageCountMap.get(conv.id) || 0,
+    preview: firstMessageMap.get(conv.id) || conv.title
+  }));
 
   return (
     <ProtectedLayout>

@@ -85,6 +85,12 @@ export async function POST(req: Request) {
   }));
 
   // Fetch student profile and privacy settings
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("display_name, username")
+    .eq("id", user.id)
+    .single();
+
   const { data: studentProfile } = await admin
     .from("student_profiles")
     .select("*")
@@ -105,9 +111,11 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  // Enrich profile with weaknesses
+  // Enrich profile with user info and weaknesses
   const enrichedProfile: Record<string, unknown> | null = studentProfile ? {
     ...studentProfile,
+    display_name: profile?.display_name || profile?.username,
+    username: profile?.username,
     weaknesses: (weaknesses || []).map((w: { concept_id: string }) => ({ concept_id: w.concept_id })),
   } : null;
 
