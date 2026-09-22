@@ -20,9 +20,20 @@ export default async function ProfilePage() {
   const supabase = await createClient();
   const { data: studentProfile } = await supabase
     .from("student_profiles")
-    .select("*")
+    .select("display_name, grade, class_name, target_exam, learning_goals, subjects, study_preferences")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  // Combine profile data
+  const fullProfile = studentProfile ? {
+    display_name: profile.display_name,
+    grade: studentProfile.grade,
+    class_name: studentProfile.class_name,
+    target_exam: studentProfile.target_exam,
+    learning_goals: studentProfile.learning_goals,
+    subjects: studentProfile.subjects,
+    study_preferences: studentProfile.study_preferences,
+  } : null;
 
   return (
     <ProtectedLayout>
@@ -91,7 +102,7 @@ export default async function ProfilePage() {
             <CardDescription>Cập nhật thông tin để nhận gợi ý phù hợp hơn từ AI</CardDescription>
           </CardHeader>
           <CardContent>
-            <ProfileForm profile={studentProfile} />
+            <ProfileForm profile={fullProfile} />
           </CardContent>
         </Card>
 
