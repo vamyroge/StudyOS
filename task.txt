@@ -1,0 +1,47 @@
+Đọc AGENTS.md, ROADMAP.md, AUTONOMOUS.md và toàn bộ cấu trúc repository StudyOS.
+
+Bắt đầu autonomous development ngay.
+
+Không chỉ phân tích hoặc đưa kế hoạch — hãy trực tiếp kiểm tra, sửa và phát triển code.
+
+Quy trình bắt buộc:
+AUDIT → PRIORITIZE → IMPLEMENT → TEST → DEBUG → VERIFY → DOCUMENT → NEXT TASK
+
+Trước tiên:
+1. Audit toàn bộ repository thực tế.
+2. Kiểm tra package.json và các script hiện có.
+3. Kiểm tra Supabase, auth, middleware/proxy, RLS và migrations.
+4. Kiểm tra AI provider/OmniRoute integration.
+5. Kiểm tra embedding/RAG.
+6. Kiểm tra các API và environment variables.
+7. Chạy các kiểm tra hiện có để xác định trạng thái thực tế.
+8. Đối chiếu với ROADMAP.md.
+
+Sau audit, tự chọn blocker P0/P1 quan trọng nhất và bắt đầu IMPLEMENT ngay.
+
+Sau mỗi thay đổi:
+- chạy typecheck
+- chạy lint nếu có
+- chạy test nếu có
+- chạy build khi phù hợp
+- nếu lỗi thì tự debug và sửa
+- không được bỏ qua lỗi chỉ để tiếp tục
+
+Nếu thiếu API key/credential:
+- không fake
+- không hard-code
+- hoàn thiện phần code có thể làm
+- ghi rõ blocker
+- tiếp tục task khác không phụ thuộc blocker
+
+Không hỏi tôi những thứ có thể tự kiểm tra trong repository.
+
+Không rewrite project không cần thiết.
+Không phá chức năng đang hoạt động.
+Không tắt RLS/auth/security để làm cho code chạy.
+
+Sau khi hoàn thành task đầu tiên, tự động chuyển sang task P0/P1 tiếp theo.
+
+Mục tiêu cuối cùng: biến StudyOS hiện tại thành một ứng dụng học tập AI hoàn chỉnh, ổn định, bảo mật và có thể deploy.
+
+BẮT ĐẦU NGAY.

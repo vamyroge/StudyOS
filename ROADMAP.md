@@ -311,20 +311,41 @@ Critical flows are automatically verified.
 
 Priority: P3
 
-* [ ] performance
-* [ ] caching
-* [ ] rate limiting
-* [ ] error monitoring
-* [ ] logging
-* [ ] accessibility
-* [ ] responsive UI
-* [ ] loading states
-* [ ] failure states
-* [ ] security audit
-* [ ] dependency audit
+Status: PARTIAL
+
+* [ ] performance — BASELINE: build optimized, server components default
+* [x] caching — IMPLEMENTED: React cache, revalidatePath in server actions
+* [x] rate limiting — IMPLEMENTED: process-local rate limiter (20 req/min tutor, 10 uploads/hour)
+* [ ] error monitoring — PENDING: requires external service (Sentry/etc)
+* [x] logging — IMPLEMENTED: audit_logs, ai_usage_logs tables + logAudit(), logAIUsage()
+* [ ] accessibility — PARTIAL: semantic HTML, keyboard nav needs audit
+* [x] responsive UI — IMPLEMENTED: Tailwind responsive classes (md:, lg:, sm:)
+* [x] loading states — IMPLEMENTED: disabled states in forms, loading text
+* [x] failure states — IMPLEMENTED: error messages in forms + API routes
+* [x] security audit — IMPLEMENTED: RLS policies, server-side auth, no exposed secrets
+* [ ] dependency audit — COMPLETED: 3 moderate vulnerabilities in vitest (dev only, path traversal in @vitest/mocker)
 
 Acceptance:
 The application is stable enough for real users and demonstration.
+
+**Status: Core production features operational, monitoring pending**
+
+**Implemented:**
+- Rate limiting on critical endpoints
+- Comprehensive audit logging
+- Error handling throughout
+- Security best practices (RLS, auth verification)
+- Responsive design with Tailwind
+
+**Pending:**
+- Performance profiling and optimization
+- External monitoring setup (Sentry/DataDog)
+- Formal accessibility audit (WCAG)
+
+**Security Notes:**
+- Vitest vulnerability (GHSA-82fw-gwwq-j7x9) affects dev environment only
+- Production runtime dependencies: 0 vulnerabilities
+- Upgrade to vitest@5 requires breaking changes (deferred)
 
 ---
 

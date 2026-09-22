@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StudyOS
+
+AI Study Platform cho học sinh THPT Việt Nam.
+
+## Tech Stack
+
+- Next.js 16 + TypeScript (strict) + App Router
+- Tailwind CSS v4 + shadcn/ui
+- Supabase (Auth, PostgreSQL, Storage)
+- OmniRoute / OpenRouter (AI via abstraction layer)
+- Zod (validation)
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+cp .env.example .env.local
+# Fill in Supabase and AI credentials in .env.local
+
+npm install
+npm run migrate # requires DATABASE_URL
+npm run seed    # requires Supabase credentials and applied migrations
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | TypeScript type checking |
+| `npm test` | Run unit tests |
+| `npm run migrate` | Apply tracked SQL migrations using DATABASE_URL |
+| `npm run seed` | Seed runnable curriculum and question data |
+| `npm start` | Start production server |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+See ARCHITECTURE.md for full directory structure.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Documentation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- AGENTS.md - Development rules
+- PROJECT_CONTEXT.md - Product overview
+- ARCHITECTURE.md - System architecture
+- ROADMAP.md - Development phases
+- DATABASE.md - Database schema
+- AI_ARCHITECTURE.md - AI system design
+- RAG.md - Retrieval architecture
+- LEARNING_ENGINE.md - Knowledge tracing & adaptive learning
+- EVALUATION.md - Testing & benchmark framework
+- SECURITY.md - Security principles
+- TESTING.md - Testing strategy
 
-## Deploy on Vercel
+## MVP Subjects
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Toán (Math)
+- Vật lý (Physics)
+- Hóa học (Chemistry)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Roles
+
+- STUDENT - Primary user
+- ADMIN - System management
+
+## Implementation Status
+
+- Authentication, protected routes, role helpers, profile editing, privacy controls, question attempts, and deterministic learning updates are implemented in code.
+- Tutor orchestration, conversation persistence, usage logging, and RAG integration are implemented in code but require a configured Supabase database, Storage bucket, AI provider, and embedding provider to verify end-to-end.
+- TXT, Markdown, and CSV knowledge ingestion is supported when embeddings are configured. PDF/OCR is intentionally rejected until a real extractor is added.
+- The process-local rate limiter is a safe single-instance fallback. Production requires shared rate-limit storage.
