@@ -4,9 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ProtectedLayout } from "@/components/protected-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Settings as SettingsIcon, Lock, User, Bell, Shield, Brain } from "lucide-react";
+import { Settings as SettingsIcon, Lock, User, Shield, Brain } from "lucide-react";
 import { PrivacyForm } from "./privacy-form";
-import { ChatHistorySection } from "./chat-history-section";
 import { MistakesSection } from "./mistakes-section";
 
 export default async function SettingsPage() {
@@ -22,25 +21,6 @@ export default async function SettingsPage() {
     .maybeSingle();
   
   const settings = studentProfile?.privacy_settings?.[0] || null;
-
-  // Fetch chat history
-  const { data: conversations } = await supabase
-    .from("conversations")
-    .select("id, title, created_at, updated_at")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false })
-    .limit(10);
-
-  // Count messages per conversation
-  const conversationsWithCount = await Promise.all(
-    (conversations || []).map(async (conv) => {
-      const { count } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("conversation_id", conv.id);
-      return { ...conv, message_count: count || 0 };
-    })
-  );
 
   // Fetch mistakes with concept names
   const { data: mistakes } = await supabase
@@ -163,9 +143,6 @@ export default async function SettingsPage() {
             <PrivacyForm settings={settings} />
           </CardContent>
         </Card>
-
-        {/* Chat History */}
-        <ChatHistorySection conversations={conversationsWithCount} />
 
         {/* Mistakes Analysis */}
         <MistakesSection mistakes={mistakesWithConcepts} />
