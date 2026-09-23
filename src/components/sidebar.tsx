@@ -17,7 +17,8 @@ import {
   Menu,
   X,
   User,
-  History
+  History,
+  Target
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/app/(auth)/actions";
@@ -43,6 +44,7 @@ export function Sidebar({ username, role }: SidebarProps) {
   const studentNavItems = [
     { href: "/dashboard", icon: Home, label: "Tổng quan" },
     { href: "/tutor", icon: MessageCircle, label: "AI Tutor" },
+    { href: "/quiz", icon: Target, label: "Quiz" },
     { href: "/history", icon: History, label: "Lịch sử" },
     { href: "/questions", icon: BookOpen, label: "Luyện tập" },
     { href: "/progress", icon: TrendingUp, label: "Tiến trình" },
