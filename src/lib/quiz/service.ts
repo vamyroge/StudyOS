@@ -112,13 +112,31 @@ Trả về JSON theo format sau:
     const content = response.content || "";
     
     // Extract JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    let jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error("AI response without JSON:", content);
       return { success: false, error: "AI không trả về JSON hợp lệ" };
     }
 
-    const parsed = quizGenerationSchema.safeParse(JSON.parse(jsonMatch[0]));
+    // Fix common JSON issues from AI
+    let jsonString = jsonMatch[0];
+    // Replace invalid escape sequences
+    jsonString = jsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+    // Fix newlines in strings
+    jsonString = jsonString.replace(/(?<!\\)\n/g, '\\n');
+    jsonString = jsonString.replace(/(?<!\\)\r/g, '\\r');
+    jsonString = jsonString.replace(/(?<!\\)\t/g, '\\t');
+
+    let parsedJson;
+    try {
+      parsedJson = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      console.error("JSON string:", jsonString);
+      return { success: false, error: "AI trả về JSON không hợp lệ" };
+    }
+
+    const parsed = quizGenerationSchema.safeParse(parsedJson);
     if (!parsed.success) {
       console.error("Quiz validation error:", parsed.error);
       return { success: false, error: "Dữ liệu quiz không hợp lệ" };
@@ -224,13 +242,33 @@ Trả về JSON theo format:
     );
 
     const content = response.content || "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    
+    // Extract JSON from response
+    let jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error("AI response without JSON:", content);
       return { success: false, error: "AI không trả về JSON hợp lệ" };
     }
 
-    const parsed = quizGenerationSchema.safeParse(JSON.parse(jsonMatch[0]));
+    // Fix common JSON issues from AI
+    let jsonString = jsonMatch[0];
+    // Replace invalid escape sequences
+    jsonString = jsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+    // Fix newlines in strings
+    jsonString = jsonString.replace(/(?<!\\)\n/g, '\\n');
+    jsonString = jsonString.replace(/(?<!\\)\r/g, '\\r');
+    jsonString = jsonString.replace(/(?<!\\)\t/g, '\\t');
+
+    let parsedJson;
+    try {
+      parsedJson = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError);
+      console.error("JSON string:", jsonString);
+      return { success: false, error: "AI trả về JSON không hợp lệ" };
+    }
+
+    const parsed = quizGenerationSchema.safeParse(parsedJson);
     if (!parsed.success) {
       console.error("Personalized quiz validation error:", parsed.error);
       return { success: false, error: "Dữ liệu quiz không hợp lệ" };
