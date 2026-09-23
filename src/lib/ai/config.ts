@@ -28,15 +28,26 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> 
 };
 
 export function getAIConfig(): AIConfig {
-  const provider = (process.env.AI_PROVIDER || "9router") as AIProvider;
+  const provider = (process.env.AI_PROVIDER || "xkiro") as AIProvider;
   const defaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.openrouter;
   const isXkiro = provider === "xkiro";
+
+  const baseUrl = (isXkiro ? process.env.XKIRO_BASE_URL : undefined) || process.env.AI_BASE_URL || defaults.baseUrl;
+  const model = (isXkiro ? process.env.XKIRO_MODEL : undefined) || process.env.AI_MODEL || defaults.model;
+
+  // Validate configuration
+  if (!process.env.AI_API_KEY && !process.env.XKIRO_API_KEY) {
+    console.warn("⚠️  No API key configured. AI requests will fail.");
+  }
+  if (!model) {
+    console.warn("⚠️  No AI model configured. AI requests will fail.");
+  }
 
   return {
     provider,
     apiKey: (isXkiro ? process.env.XKIRO_API_KEY : undefined) || process.env.AI_API_KEY || "",
-    baseUrl: (isXkiro ? process.env.XKIRO_BASE_URL : undefined) || process.env.AI_BASE_URL || defaults.baseUrl,
-    model: (isXkiro ? process.env.XKIRO_MODEL : undefined) || process.env.AI_MODEL || defaults.model,
+    baseUrl,
+    model,
     maxTokens: process.env.AI_MAX_TOKENS ? parseInt(process.env.AI_MAX_TOKENS) : 4096,
     temperature: process.env.AI_TEMPERATURE ? parseFloat(process.env.AI_TEMPERATURE) : 0.7,
   };

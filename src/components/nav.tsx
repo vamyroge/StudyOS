@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { useLoading } from "@/hooks/use-loading";
 import { Brain, Home, MessageCircle, BookOpen, TrendingUp, FileText, User, Settings, LogOut, Shield } from "lucide-react";
 import { logout } from "@/app/(auth)/actions";
 import { Button } from "./ui/button";
@@ -9,6 +12,16 @@ interface NavProps {
 }
 
 export function Nav({ username, role }: NavProps) {
+  const pathname = usePathname();
+  const { addLoading, removeLoading } = useLoading();
+
+  useEffect(() => {
+    addLoading();
+    const timer = setTimeout(() => {
+      removeLoading();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pathname, addLoading, removeLoading]);
   return (
     <nav className="border-b bg-background">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">

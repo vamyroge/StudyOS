@@ -32,7 +32,7 @@ export function ChatHistorySection({ conversations }: { conversations: Conversat
       } else {
         alert("Không thể xóa cuộc hội thoại");
       }
-    } catch (error) {
+    } catch {
       alert("Đã xảy ra lỗi khi xóa");
     } finally {
       setDeleting(null);

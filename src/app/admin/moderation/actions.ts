@@ -3,6 +3,7 @@
 import { requireRole } from "@/lib/auth/utils";
 import { createAdminClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit/logger";
+import { publishApprovedContribution, type ApprovedContribution } from "@/lib/rag/contributions";
 import { revalidatePath } from "next/cache";
 
 export async function moderateSubmission(formData: FormData) {
@@ -39,7 +40,21 @@ export async function moderateSubmission(formData: FormData) {
     return { error: "Failed to create review" };
   }
 
-  // Update submission status
+  if (decision === "approved" && submission.target_type === "knowledge_contribution") {
+    const { data: contribution } = await supabase
+      .from("knowledge_contributions")
+      .select("id, submitter_id, title, content, source, subject_id, storage_path")
+      .eq("id", submission.target_id)
+      .single();
+    if (!contribution) return { error: "Knowledge contribution not found" };
+    try {
+      await publishApprovedContribution(supabase, contribution as ApprovedContribution);
+    } catch {
+      return { error: "Không thể xử lý đóng góp. Nội dung chưa được đưa vào kho kiến thức." };
+    }
+  }
+
+  // Update submission status only after publishing approved knowledge succeeds.
   const newStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "flagged";
   const { error: updateError } = await supabase
     .from("submissions")

@@ -3,61 +3,72 @@ import { detectIntent } from "@/lib/ai/orchestrator/intent";
 import { routeRole } from "@/lib/ai/orchestrator/role-router";
 
 describe("detectIntent", () => {
-  it("detects explain_concept intent", () => {
-    expect(detectIntent("Giải thích khái niệm hàm số bậc nhất")).toBe("explain_concept");
+  it("detects explanation intent", () => {
+    expect(detectIntent("Giải thích khái niệm hàm số bậc nhất")).toBe("explanation");
   });
 
-  it("detects solve_problem intent", () => {
-    expect(detectIntent("Giải bài tập này giúp mình")).toBe("solve_problem");
+  it("detects problem_solving intent", () => {
+    expect(detectIntent("Giải bài tập này giúp mình")).toBe("homework_help");
   });
 
-  it("detects practice intent", () => {
-    expect(detectIntent("Cho mình thêm bài luyện tập")).toBe("practice");
+  it("detects quiz_request intent with explicit keywords", () => {
+    expect(detectIntent("Cho mình quiz về phương trình")).toBe("quiz_request");
+    expect(detectIntent("Tạo câu hỏi trắc nghiệm")).toBe("quiz_request");
   });
 
-  it("detects review intent", () => {
-    expect(detectIntent("Xem lại tổng kết chương 1")).toBe("review");
+  it("detects practice_request intent", () => {
+    expect(detectIntent("Cho mình bài tập luyện tập")).toBe("practice_request");
   });
 
-  it("detects diagnose intent", () => {
-    expect(detectIntent("Phân tích lỗi sai của mình")).toBe("diagnose");
+  it("detects summary intent", () => {
+    expect(detectIntent("Tóm tắt chương 1")).toBe("summary");
   });
 
-  it("detects plan intent", () => {
-    expect(detectIntent("Lập kế hoạch học tập môn toán")).toBe("plan");
+  it("detects study_plan intent", () => {
+    expect(detectIntent("Lập kế hoạch học tập môn toán")).toBe("study_plan");
   });
 
-  it("detects analyze_error intent", () => {
-    expect(detectIntent("mistake wrong tại sao lỗi")).toBe("analyze_error");
+  it("detects mistake_analysis intent", () => {
+    expect(detectIntent("Tại sao tôi sai câu này")).toBe("mistake_analysis");
   });
 
-  it("defaults to general_question for unmatched text", () => {
-    expect(detectIntent("Hello there")).toBe("general_question");
+  it("detects casual_learning for greetings", () => {
+    expect(detectIntent("Xin chào")).toBe("casual_learning");
+    expect(detectIntent("Hello")).toBe("casual_learning");
+  });
+
+  it("defaults to unclear for unmatched text", () => {
+    expect(detectIntent("asdfghjkl random text")).toBe("unclear");
+  });
+
+  it("does NOT automatically create quiz for simple questions", () => {
+    expect(detectIntent("Định luật Boyle là gì?")).not.toBe("quiz_request");
+    expect(detectIntent("Công thức tính diện tích hình tròn")).not.toBe("quiz_request");
   });
 });
 
 describe("routeRole", () => {
-  it("routes explain_concept to tutor", () => {
-    expect(routeRole("explain_concept")).toBe("tutor");
+  it("routes explanation to tutor", () => {
+    expect(routeRole("explanation")).toBe("tutor");
   });
 
-  it("routes solve_problem to problem_solver", () => {
-    expect(routeRole("solve_problem")).toBe("problem_solver");
+  it("routes problem_solving to problem_solver", () => {
+    expect(routeRole("problem_solving")).toBe("problem_solver");
   });
 
-  it("routes practice to examiner", () => {
-    expect(routeRole("practice")).toBe("examiner");
+  it("routes quiz_request to examiner", () => {
+    expect(routeRole("quiz_request")).toBe("examiner");
   });
 
-  it("routes review to reviewer", () => {
-    expect(routeRole("review")).toBe("reviewer");
+  it("routes summary to reviewer", () => {
+    expect(routeRole("summary")).toBe("reviewer");
   });
 
-  it("routes plan to coach", () => {
-    expect(routeRole("plan")).toBe("coach");
+  it("routes study_plan to coach", () => {
+    expect(routeRole("study_plan")).toBe("coach");
   });
 
-  it("defaults to tutor for unknown", () => {
-    expect(routeRole("unknown")).toBe("tutor");
+  it("defaults to tutor for unclear", () => {
+    expect(routeRole("unclear")).toBe("tutor");
   });
 });

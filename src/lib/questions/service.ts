@@ -42,6 +42,35 @@ export async function getQuestionOptions(questionId: string) {
   }));
 }
 
+export async function getQuestionOptionsBatch(questionIds: string[]) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("question_options")
+    .select("*")
+    .in("question_id", questionIds)
+    .order("question_id", { ascending: true })
+    .order('"order"', { ascending: true });
+  if (error || !data) return {};
+  
+  const optionsByQuestion: Record<string, typeof data> = {};
+  for (const option of data) {
+    if (!optionsByQuestion[option.question_id]) {
+      optionsByQuestion[option.question_id] = [];
+    }
+    optionsByQuestion[option.question_id].push(option);
+  }
+  
+  return Object.entries(optionsByQuestion).reduce((acc, [questionId, options]) => ({
+    ...acc,
+    [questionId]: options.map((option) => ({
+      id: option.id,
+      question_id: option.question_id,
+      content: option.content,
+      order: option.order,
+    })),
+  }), {} as Record<string, Array<{ id: string; question_id: string; content: string; order: number }>>);
+}
+
 export async function getSubjects() {
   const supabase = await createClient();
   const { data, error } = await supabase.from("subjects").select("*");

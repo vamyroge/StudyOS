@@ -10,7 +10,9 @@ const loginSchema = z.object({
   password: z.string().min(6),
 });
 
-export async function login(formData: FormData) {
+export type LoginResult = { error: string } | { success: true };
+
+export async function login(formData: FormData): Promise<LoginResult> {
   const supabase = await createClient();
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
@@ -19,7 +21,7 @@ export async function login(formData: FormData) {
   if (!parsed.success) return { error: "Thông tin đăng nhập không hợp lệ." };
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { error: error.message };
-  redirect("/dashboard");
+  return { success: true };
 }
 
 const registerSchema = z
@@ -34,7 +36,9 @@ const registerSchema = z
     path: ["confirmPassword"],
   });
 
-export async function register(formData: FormData) {
+export type RegisterResult = { error: string } | { success: true; needsEmailConfirmation: boolean };
+
+export async function register(formData: FormData): Promise<RegisterResult> {
   const supabase = await createClient();
   const parsed = registerSchema.safeParse({
     email: formData.get("email"),
@@ -47,7 +51,7 @@ export async function register(formData: FormData) {
     return { error: issues?.[0]?.message || "Thông tin không hợp lệ." };
   }
   const { email, username, password } = parsed.data;
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -56,7 +60,7 @@ export async function register(formData: FormData) {
     },
   });
   if (error) return { error: error.message };
-  redirect("/login?registered=true");
+  return { success: true, needsEmailConfirmation: !data.session };
 }
 
 export async function logout() {

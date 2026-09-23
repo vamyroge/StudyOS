@@ -20,8 +20,9 @@ export function ConversationCard({ conversation }: { conversation: Conversation 
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   
-  const isToday = new Date(conversation.updated_at).toDateString() === new Date().toDateString();
-  const isRecent = Date.now() - new Date(conversation.updated_at).getTime() < 3600000; // 1 hour
+  const now = new Date();
+  const isToday = new Date(conversation.updated_at).toDateString() === now.toDateString();
+  const isRecent = now.getTime() - new Date(conversation.updated_at).getTime() < 3600000; // 1 hour
   
   const handleDelete = async () => {
     if (!confirm(`Bạn có chắc muốn xóa cuộc hội thoại "${conversation.title}"?`)) return;
@@ -38,7 +39,7 @@ export function ConversationCard({ conversation }: { conversation: Conversation 
         alert("Không thể xóa cuộc hội thoại");
         setDeleting(false);
       }
-    } catch (error) {
+    } catch {
       alert("Đã xảy ra lỗi khi xóa");
       setDeleting(false);
     }

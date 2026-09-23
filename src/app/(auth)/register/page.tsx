@@ -1,18 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Brain } from "lucide-react";
+import { useLoading } from "@/hooks/use-loading";
 import { register } from "../actions";
 
 export default function RegisterPage() {
+  const { addLoading, removeLoading } = useLoading();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmationSent, setConfirmationSent] = useState(false);
+
+  // Remove loading overlay when page is ready
+  useEffect(() => {
+    removeLoading();
+  }, [removeLoading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,6 +34,7 @@ export default function RegisterPage() {
       return;
     }
     setLoading(true);
+    addLoading();
     try {
       const formData = new FormData();
       formData.set("email", email);
@@ -33,13 +42,19 @@ export default function RegisterPage() {
       formData.set("password", password);
       formData.set("confirmPassword", confirmPassword);
       const result = await register(formData);
-      if (result?.error) {
+      if ("error" in result) {
         setError(result.error);
         setLoading(false);
+        removeLoading();
+        return;
       }
+      setConfirmationSent(true);
+      setLoading(false);
+      removeLoading();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
+      removeLoading();
     }
   }
 
@@ -54,6 +69,12 @@ export default function RegisterPage() {
       {error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           {error}
+        </div>
+      )}
+
+      {confirmationSent && (
+        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700" role="status">
+          Đã gửi link xác nhận đến email của bạn. Hãy mở email để xác nhận tài khoản trước khi đăng nhập.
         </div>
       )}
 
@@ -108,7 +129,7 @@ export default function RegisterPage() {
             autoComplete="new-password"
           />
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={loading || confirmationSent}>
           {loading ? "Đang xử lý..." : "Đăng ký"}
         </Button>
       </form>

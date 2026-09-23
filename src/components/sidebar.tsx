@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLoading } from "@/hooks/use-loading";
+import { LoadingLink } from "@/components/ui/loading-link";
 import { 
   Home, 
   MessageCircle, 
@@ -28,7 +29,16 @@ interface SidebarProps {
 
 export function Sidebar({ username, role }: SidebarProps) {
   const pathname = usePathname();
+  const { addLoading, removeLoading } = useLoading();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    addLoading();
+    const timer = setTimeout(() => {
+      removeLoading();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pathname, addLoading, removeLoading]);
 
   const studentNavItems = [
     { href: "/dashboard", icon: Home, label: "Tổng quan" },
@@ -52,12 +62,12 @@ export function Sidebar({ username, role }: SidebarProps) {
       {/* Mobile Header với Hamburger */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-full items-center justify-between px-4">
-          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-primary">
+          <LoadingLink href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-primary">
             <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary text-primary-foreground">
               <Brain className="h-5 w-5" />
             </div>
             <span>StudyOS</span>
-          </Link>
+          </LoadingLink>
           <Button
             variant="ghost"
             size="icon"
@@ -88,12 +98,12 @@ export function Sidebar({ username, role }: SidebarProps) {
       >
         {/* Logo (hidden on mobile, shown on desktop) */}
         <div className="hidden lg:flex p-6">
-          <Link href="/dashboard" className="flex items-center gap-3 font-bold text-2xl text-primary">
+          <LoadingLink href="/dashboard" className="flex items-center gap-3 font-bold text-2xl text-primary">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary text-primary-foreground">
               <Brain className="h-6 w-6" />
             </div>
             <span>StudyOS</span>
-          </Link>
+          </LoadingLink>
         </div>
 
         {/* Mobile spacer */}
@@ -106,7 +116,7 @@ export function Sidebar({ username, role }: SidebarProps) {
             const Icon = item.icon;
             
             return (
-              <Link 
+              <LoadingLink 
                 key={item.href} 
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
@@ -120,7 +130,7 @@ export function Sidebar({ username, role }: SidebarProps) {
                   <Icon className="h-5 w-5" />
                   <span className="font-medium">{item.label}</span>
                 </Button>
-              </Link>
+              </LoadingLink>
             );
           })}
         </nav>
@@ -138,18 +148,18 @@ export function Sidebar({ username, role }: SidebarProps) {
           </div>
           
           <div className="flex gap-2">
-            <Link href="/profile" className="flex-1" onClick={() => setMobileOpen(false)}>
+            <LoadingLink href="/profile" className="flex-1" onClick={() => setMobileOpen(false)}>
               <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
                 <User className="h-4 w-4" />
                 <span className="text-sm">Hồ sơ</span>
               </Button>
-            </Link>
-            <Link href="/settings" className="flex-1" onClick={() => setMobileOpen(false)}>
+            </LoadingLink>
+            <LoadingLink href="/settings" className="flex-1" onClick={() => setMobileOpen(false)}>
               <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
                 <Settings className="h-4 w-4" />
                 <span className="text-sm">Cài đặt</span>
               </Button>
-            </Link>
+            </LoadingLink>
           </div>
 
           <form action={logout}>

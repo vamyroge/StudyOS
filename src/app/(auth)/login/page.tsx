@@ -1,36 +1,49 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Brain } from "lucide-react";
+import { useLoading } from "@/hooks/use-loading";
 import { login } from "../actions";
 
 function LoginForm() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { addLoading, removeLoading } = useLoading();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const registered = searchParams.get("registered");
 
+  // Remove loading overlay when page is ready
+  useEffect(() => {
+    removeLoading();
+  }, [removeLoading]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    addLoading();
     try {
       const formData = new FormData();
       formData.set("email", email);
       formData.set("password", password);
       const result = await login(formData);
-      if (result?.error) {
+      if ("error" in result) {
         setError(result.error);
         setLoading(false);
+        removeLoading();
+        return;
       }
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
+      removeLoading();
     }
   }
 
@@ -44,7 +57,7 @@ function LoginForm() {
 
       {registered && (
         <div className="rounded-md bg-green-50 p-3 text-sm text-green-700" role="alert">
-          Đăng ký thành công. Vui lòng đăng nhập.
+          Đăng ký thành công. Hãy kiểm tra email để xác nhận tài khoản, sau đó đăng nhập.
         </div>
       )}
 

@@ -1,13 +1,17 @@
 export type AIIntent =
-  | "explain_concept"
-  | "solve_problem"
-  | "practice"
-  | "review"
-  | "diagnose"
-  | "plan"
-  | "analyze_error"
-  | "general_question"
-  | "unknown";
+  | "question_answer"
+  | "explanation"
+  | "problem_solving"
+  | "concept_learning"
+  | "summary"
+  | "quiz_request"
+  | "practice_request"
+  | "homework_help"
+  | "exam_preparation"
+  | "mistake_analysis"
+  | "study_plan"
+  | "casual_learning"
+  | "unclear";
 
 export type AIRole =
   | "tutor"

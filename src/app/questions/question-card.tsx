@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useLoading } from "@/hooks/use-loading";
 import { submitAnswer, type SubmitAnswerState } from "./actions";
 import { Button } from "@/components/ui/button";
 
@@ -14,7 +15,16 @@ export function QuestionCard({
   options: Option[];
 }) {
   const [state, action, pending] = useActionState<SubmitAnswerState, FormData>(submitAnswer, null);
+  const { addLoading, removeLoading } = useLoading();
   const difficultyLabel = question.difficulty !== null ? `${Math.round(question.difficulty * 100)}%` : "N/A";
+
+  useEffect(() => {
+    if (pending) {
+      addLoading();
+    } else {
+      removeLoading();
+    }
+  }, [pending, addLoading, removeLoading]);
 
   return (
     <form action={action} className="rounded-lg border p-5">

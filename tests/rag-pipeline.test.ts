@@ -1,29 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { chunkText, mapWithConcurrency } from "@/lib/rag/ingestion";
 
 describe("RAG Pipeline - Chunking", () => {
-  function chunkText(content: string, maxChars: number = 900): string[] {
-    const paragraphs = content.replace(/\r\n/g, "\n").split(/\n\s*\n/);
-    const chunks: string[] = [];
-    let current = "";
-    
-    for (const paragraph of paragraphs) {
-      if (paragraph.length > maxChars) {
-        if (current) chunks.push(current);
-        for (let index = 0; index < paragraph.length; index += maxChars) {
-          chunks.push(paragraph.slice(index, index + maxChars));
-        }
-        current = "";
-      } else if ((current + "\n\n" + paragraph).length > maxChars) {
-        if (current) chunks.push(current);
-        current = paragraph;
-      } else {
-        current = current ? `${current}\n\n${paragraph}` : paragraph;
-      }
-    }
-    if (current) chunks.push(current);
-    return chunks.filter(Boolean);
-  }
-
   it("splits text into chunks by paragraph", () => {
     const text = "Para 1\n\nPara 2\n\nPara 3";
     const chunks = chunkText(text, 100);
@@ -66,6 +44,23 @@ describe("RAG Pipeline - Chunking", () => {
   it("handles single line input", () => {
     const chunks = chunkText("Single line");
     expect(chunks).toEqual(["Single line"]);
+  });
+});
+
+describe("RAG ingestion concurrency", () => {
+  it("preserves input order while limiting parallel work", async () => {
+    let active = 0;
+    let peak = 0;
+    const result = await mapWithConcurrency([1, 2, 3, 4], 2, async (value) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return value * 2;
+    });
+
+    expect(result).toEqual([2, 4, 6, 8]);
+    expect(peak).toBeLessThanOrEqual(2);
   });
 });
 

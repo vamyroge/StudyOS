@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { createEmbedding, getEmbeddingConfig } from "@/lib/ai/embeddings";
+import { chunkText, mapWithConcurrency } from "@/lib/rag/ingestion";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 
@@ -50,8 +51,13 @@ export async function POST(req: Request) {
     const { data: insertedChunks, error: chunkError } = await admin.from("document_chunks").insert(chunks.map((chunk, index) => ({ document_version_id: version.id, content: chunk, chunk_index: index, metadata: { source: file.name, subject_id: subjectId || null } }))).select("id, content");
     if (chunkError || !insertedChunks) throw new Error("Could not store chunks");
     const embeddingConfig = getEmbeddingConfig();
-    const embeddings = [];
-    for (const chunk of insertedChunks) embeddings.push({ chunk_id: chunk.id, embedding: `[${(await createEmbedding(chunk.content)).join(",")}]`, embedding_model: embeddingConfig!.model, embedding_dimension: embeddingConfig!.dimension, embedding_version: "v1" });
+    const embeddings = await mapWithConcurrency(insertedChunks, 3, async (chunk) => ({
+      chunk_id: chunk.id,
+      embedding: `[${(await createEmbedding(chunk.content)).join(",")}]`,
+      embedding_model: embeddingConfig!.model,
+      embedding_dimension: embeddingConfig!.dimension,
+      embedding_version: "v1",
+    }));
     const { error: embeddingError } = await admin.from("document_embeddings").insert(embeddings);
     if (embeddingError) throw new Error("Could not store embeddings");
     await admin.from("document_versions").update({ status: "ready" }).eq("id", version.id);
@@ -62,22 +68,4 @@ export async function POST(req: Request) {
     if (job) await admin.from("document_processing_jobs").update({ status: "failed", error_message: "Document processing failed", completed_at: new Date().toISOString() }).eq("id", job.id);
     return NextResponse.json({ error: "Document processing failed" }, { status: 500 });
   }
-}
-
-function chunkText(content: string, maxChars: number = 900) {
-  const paragraphs = content.replace(/\r\n/g, "\n").split(/\n\s*\n/);
-  const chunks: string[] = [];
-  let current = "";
-  for (const paragraph of paragraphs) {
-    if (paragraph.length > maxChars) {
-      if (current) chunks.push(current);
-      for (let index = 0; index < paragraph.length; index += maxChars) chunks.push(paragraph.slice(index, index + maxChars));
-      current = "";
-    } else if ((current + "\n\n" + paragraph).length > maxChars) {
-      if (current) chunks.push(current);
-      current = paragraph;
-    } else current = current ? `${current}\n\n${paragraph}` : paragraph;
-  }
-  if (current) chunks.push(current);
-  return chunks.filter(Boolean);
 }

@@ -10,7 +10,7 @@ export default async function UsersPage() {
     .from("profiles")
     .select("*, student_profiles(grade, subjects)")
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(20);
 
   const studentCount = profiles?.filter(p => p.role === "STUDENT").length || 0;
   const adminCount = profiles?.filter(p => p.role === "ADMIN").length || 0;

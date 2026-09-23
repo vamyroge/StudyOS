@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
+import { LoadingWrapper } from "@/components/ui/loading-wrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,8 +25,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="vi"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+          integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        {children}
+        <LoadingWrapper>{children}</LoadingWrapper>
       </body>
     </html>
   );

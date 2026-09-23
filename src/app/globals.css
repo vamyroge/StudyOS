@@ -128,3 +128,48 @@
     @apply font-sans;
   }
 }
+
+/* Math rendering styles */
+.katex {
+  font-size: 1.05em;
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+  margin: 1rem 0;
+}
+
+/* Mobile responsive math */
+@media (max-width: 640px) {
+  .katex-display {
+    font-size: 0.95em;
+  }
+  
+  .katex-display > .katex {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
+/* Chemistry subscripts and superscripts */
+.katex .mord.text {
+  font-family: inherit;
+}
+
+/* Ensure proper spacing in inline math */
+.katex .mspace {
+  display: inline-block;
+}
+
+/* Markdown prose integration */
+.prose .katex-display {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.prose p:has(.katex) {
+  line-height: 2;
+}

@@ -37,12 +37,12 @@ export default async function SettingsPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const mistakesWithConcepts = (mistakes || []).map((m: any) => ({
+  const mistakesWithConcepts = (mistakes || []).map((m: { id: string; error_type: string; evidence: string; created_at: string; concepts?: Array<{ name?: string | null }> }) => ({
     id: m.id,
     error_type: m.error_type,
     evidence: m.evidence,
     created_at: m.created_at,
-    concept_name: m.concepts?.name || null,
+    concept_name: m.concepts?.[0]?.name || null,
   }));
 
   return (

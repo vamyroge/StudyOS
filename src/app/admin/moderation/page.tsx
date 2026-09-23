@@ -13,6 +13,13 @@ export default async function ModerationPage() {
     .in("status", ["pending", "flagged"])
     .order("created_at", { ascending: false })
     .limit(50);
+  const contributionIds = (submissions || [])
+    .filter((submission) => submission.target_type === "knowledge_contribution")
+    .map((submission) => submission.target_id);
+  const { data: contributions } = contributionIds.length > 0
+    ? await supabase.from("knowledge_contributions").select("id, title, content, source, file_name, file_size").in("id", contributionIds)
+    : { data: [] as Array<{ id: string; title: string; content: string; source: string | null; file_name: string | null; file_size: number | null }> };
+  const contributionsById = new Map((contributions || []).map((contribution) => [contribution.id, contribution]));
 
   return (
     <ProtectedLayout>
@@ -26,8 +33,9 @@ export default async function ModerationPage() {
           </div>
         ) : (
           <div className="mt-6 space-y-4">
-            {submissions.map((submission) => (
-              <div key={submission.id} className="rounded-lg border p-4">
+            {submissions.map((submission) => {
+              const contribution = submission.target_type === "knowledge_contribution" ? contributionsById.get(submission.target_id) : undefined;
+              return <div key={submission.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
@@ -43,8 +51,10 @@ export default async function ModerationPage() {
                       </span>
                     </div>
                     <div className="mt-2">
-                      <p className="text-sm font-medium">{submission.target_type}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{submission.target_id}</p>
+                      <p className="text-sm font-medium">{contribution?.title || submission.target_type}</p>
+                      {!contribution && <p className="text-xs text-muted-foreground font-mono">{submission.target_id}</p>}
+                      {contribution && <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm">{contribution.content}</p>}
+                      {contribution?.file_name && <p className="mt-2 text-xs text-muted-foreground">File: {contribution.file_name}{contribution.file_size ? ` (${Math.ceil(contribution.file_size / 1024)} KB)` : ""}</p>}
                       {submission.source && (
                         <p className="mt-1 text-xs text-muted-foreground">Source: {submission.source}</p>
                       )}
@@ -55,8 +65,8 @@ export default async function ModerationPage() {
                   </div>
                   <ModerationActions submissionId={submission.id} />
                 </div>
-              </div>
-            ))}
+              </div>;
+            })}
           </div>
         )}
       </div>

@@ -1,5 +1,7 @@
-import Link from "next/link";
+"use client";
+
 import { Button } from "@/components/ui/button";
+import { LoadingLink } from "@/components/ui/loading-link";
 import { BookOpen, Brain, Target, TrendingUp } from "lucide-react";
 
 export default function Home() {
@@ -12,12 +14,12 @@ export default function Home() {
             StudyOS
           </div>
           <nav className="flex items-center gap-4">
-            <Link href="/login">
+            <LoadingLink href="/login">
               <Button variant="ghost">Đăng nhập</Button>
-            </Link>
-            <Link href="/register">
+            </LoadingLink>
+            <LoadingLink href="/register">
               <Button>Đăng ký</Button>
-            </Link>
+            </LoadingLink>
           </nav>
         </div>
       </header>
@@ -33,14 +35,14 @@ export default function Home() {
             Toán, Lý, Hóa theo chương trình GDPT 2018.
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
-            <Link href="/register">
+            <LoadingLink href="/register">
               <Button size="lg">Bắt đầu học ngay</Button>
-            </Link>
-            <Link href="/dashboard">
+            </LoadingLink>
+            <LoadingLink href="/dashboard">
               <Button size="lg" variant="outline">
                 Xem demo
               </Button>
-            </Link>
+            </LoadingLink>
           </div>
         </section>
 
