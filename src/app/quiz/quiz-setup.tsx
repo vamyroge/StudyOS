@@ -84,7 +84,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!success || !questions) {
-        setError(genError || "Không thể tạo quiz");
+        setError(`Lỗi Quick Quiz: ${genError || "Không thể tạo quiz"}`);
         setQuickLoading(false);
         return;
       }
@@ -97,7 +97,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!createSuccess || !assessmentId) {
-        setError(createError || "Không thể tạo assessment");
+        setError(`Lỗi Quick Quiz: ${createError || "Không thể tạo assessment"}`);
         setQuickLoading(false);
         return;
       }
@@ -105,7 +105,8 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       sessionStorage.setItem(`quiz_${assessmentId}`, JSON.stringify(questions));
       router.push(`/quiz/${assessmentId}`);
     } catch (err) {
-      setError("Đã xảy ra lỗi. Vui lòng thử lại.");
+      console.error("Quick quiz error:", err);
+      setError(`Lỗi Quick Quiz: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setQuickLoading(false);
     }
@@ -134,7 +135,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!success || !questions) {
-        setError(genError || "Không thể tạo quiz cá nhân hóa");
+        setError(`Lỗi Personalized Quiz: ${genError || "Không thể tạo quiz cá nhân hóa"}`);
         setPersonalizedLoading(false);
         return;
       }
@@ -147,7 +148,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!createSuccess || !assessmentId) {
-        setError(createError || "Không thể tạo assessment");
+        setError(`Lỗi Personalized Quiz: ${createError || "Không thể tạo assessment"}`);
         setPersonalizedLoading(false);
         return;
       }
@@ -155,7 +156,8 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       sessionStorage.setItem(`quiz_${assessmentId}`, JSON.stringify(questions));
       router.push(`/quiz/${assessmentId}`);
     } catch (err) {
-      setError("Đã xảy ra lỗi. Vui lòng thử lại.");
+      console.error("Personalized quiz error:", err);
+      setError(`Lỗi Personalized Quiz: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setPersonalizedLoading(false);
     }
