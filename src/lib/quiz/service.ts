@@ -95,16 +95,23 @@ Trả về CHÍNH XÁC JSON theo format sau (không thêm text nào khác):
 }`;
 
   try {
-    const response = await createCompletion({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
+    const response = await createCompletion(
+      {
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        maxTokens: 4000,
+      },
+      {
+        maxTokens: 4000,
+      }
+    );
 
     const content = response.content || "";
     
     // Extract JSON from response
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error("AI response without JSON:", content);
       return { success: false, error: "AI không trả về JSON hợp lệ" };
     }
 
@@ -117,7 +124,8 @@ Trả về CHÍNH XÁC JSON theo format sau (không thêm text nào khác):
     return { success: true, questions: parsed.data.questions };
   } catch (error) {
     console.error("Quiz generation error:", error);
-    return { success: false, error: "Không thể tạo quiz" };
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `Lỗi AI: ${errorMsg}` };
   }
 }
 
@@ -199,14 +207,21 @@ Trả về CHÍNH XÁC JSON theo format:
 }`;
 
   try {
-    const response = await createCompletion({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
+    const response = await createCompletion(
+      {
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        maxTokens: 4000,
+      },
+      {
+        maxTokens: 4000,
+      }
+    );
 
     const content = response.content || "";
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error("AI response without JSON:", content);
       return { success: false, error: "AI không trả về JSON hợp lệ" };
     }
 
@@ -219,7 +234,8 @@ Trả về CHÍNH XÁC JSON theo format:
     return { success: true, questions: parsed.data.questions };
   } catch (error) {
     console.error("Personalized quiz generation error:", error);
-    return { success: false, error: "Không thể tạo quiz cá nhân hóa" };
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `Lỗi AI: ${errorMsg}` };
   }
 }
 

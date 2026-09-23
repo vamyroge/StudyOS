@@ -2,7 +2,7 @@ import type { AICompletionRequest, AICompletionResponse, AIConfig } from "./type
 import { getAIConfig } from "./config";
 import { AIProviderError, toAIProviderError } from "./errors";
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 function getRequestTimeoutMs(): number {
   const value = Number.parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "", 10);
