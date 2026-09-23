@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/utils";
 import { createCompletion } from "@/lib/ai/provider";
 import { generateAdaptiveRecommendation } from "@/lib/mastery/service";
+import { retryTransientAIRequest } from "@/lib/ai/retry";
 
 export interface QuizQuestion {
   question: string;
@@ -95,15 +96,17 @@ Trả về JSON theo format sau:
 }`;
 
   try {
-    const response = await createCompletion(
-      {
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        maxTokens: 4000,
-      },
-      {
-        maxTokens: 4000,
-      }
+    const { result: response } = await retryTransientAIRequest(() =>
+      createCompletion(
+        {
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          maxTokens: 4000,
+        },
+        {
+          maxTokens: 4000,
+        }
+      )
     );
 
     const content = response.content || "";
@@ -207,15 +210,17 @@ Trả về JSON theo format:
 }`;
 
   try {
-    const response = await createCompletion(
-      {
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        maxTokens: 4000,
-      },
-      {
-        maxTokens: 4000,
-      }
+    const { result: response } = await retryTransientAIRequest(() =>
+      createCompletion(
+        {
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          maxTokens: 4000,
+        },
+        {
+          maxTokens: 4000,
+        }
+      )
     );
 
     const content = response.content || "";
