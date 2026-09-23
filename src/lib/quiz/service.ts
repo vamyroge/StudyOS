@@ -228,11 +228,13 @@ export async function createQuizAssessment({
   quizType,
   totalQuestions,
   difficultyLevel,
+  classId,
 }: {
   subjectId?: string;
   quizType: "personalized" | "quick_assessment" | "topic_review";
   totalQuestions: number;
   difficultyLevel?: "basic" | "intermediate" | "advanced" | "adaptive";
+  classId?: string;
 }): Promise<{ success: boolean; assessmentId?: string; error?: string }> {
   const user = await requireAuth();
   const supabase = await createClient();
@@ -242,6 +244,7 @@ export async function createQuizAssessment({
     .insert({
       student_id: user.id,
       subject_id: subjectId || null,
+      class_id: classId || null,
       quiz_type: quizType,
       total_questions: totalQuestions,
       correct_answers: 0,
