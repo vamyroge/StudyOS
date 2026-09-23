@@ -20,6 +20,7 @@ export interface AICompletionRequest {
   maxTokens?: number;
   temperature?: number;
   stream?: boolean;
+  responseFormat?: "text" | "json_object";
 }
 
 export interface AICompletionResponse {

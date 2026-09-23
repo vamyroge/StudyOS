@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth/utils";
 import { createCompletion } from "@/lib/ai/provider";
 import { generateAdaptiveRecommendation } from "@/lib/mastery/service";
 import { retryTransientAIRequest } from "@/lib/ai/retry";
+import { parseAIJSON } from "./json-parser";
 
 export interface QuizQuestion {
   question: string;
@@ -80,16 +81,24 @@ Yêu cầu:
 - Giải thích ngắn gọn tại sao đáp án đúng
 - Phù hợp với chương trình THPT Việt Nam
 
-Trả về JSON theo format sau:
+QUAN TRỌNG - Quy tắc JSON:
+- Tất cả backslash phải được escape thành \\\\ (ví dụ: \\frac thành \\\\frac)
+- Dấu ngoặc kép trong nội dung phải escape thành \\"
+- Newline phải là \\n, tab phải là \\t
+- Công thức LaTeX: \\frac{a}{b} → \\\\frac{a}{b}, \\sqrt{x} → \\\\sqrt{x}
+- Ký hiệu Hóa: H_2SO_4, NaOH, CH_3COOH (không cần escape)
+- correctAnswer phải là số nguyên từ 0-3
+
+Trả về ĐÚNG định dạng JSON sau (không thêm text, markdown, hoặc giải thích):
 {
   "questions": [
     {
       "question": "Nội dung câu hỏi",
       "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
       "correctAnswer": 0,
-      "explanation": "Giải thích đáp án đúng",
+      "explanation": "Giải thích",
       "subject": "` + subject + `",
-      "topic": "Tên chủ đề cụ thể",
+      "topic": "Tên chủ đề",
       "difficulty": "` + difficulty + `"
     }
   ]
@@ -102,6 +111,7 @@ Trả về JSON theo format sau:
           messages: [{ role: "user", content: prompt }],
           temperature: 0.7,
           maxTokens: 4000,
+          responseFormat: "json_object",
         },
         {
           maxTokens: 4000,
@@ -111,35 +121,20 @@ Trả về JSON theo format sau:
 
     const content = response.content || "";
     
-    // Extract JSON from response
-    let jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("AI response without JSON:", content);
-      return { success: false, error: "AI không trả về JSON hợp lệ" };
+    // Use safe JSON parser
+    const parseResult = parseAIJSON<{ questions: unknown }>(content);
+    
+    if (!parseResult.success || !parseResult.data) {
+      console.error("Failed to parse AI response:", parseResult.error);
+      console.error("Raw content:", content.substring(0, 500));
+      return { success: false, error: `Lỗi parse JSON: ${parseResult.error}` };
     }
 
-    // Fix common JSON issues from AI
-    let jsonString = jsonMatch[0];
-    // Replace invalid escape sequences
-    jsonString = jsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-    // Fix newlines in strings
-    jsonString = jsonString.replace(/(?<!\\)\n/g, '\\n');
-    jsonString = jsonString.replace(/(?<!\\)\r/g, '\\r');
-    jsonString = jsonString.replace(/(?<!\\)\t/g, '\\t');
-
-    let parsedJson;
-    try {
-      parsedJson = JSON.parse(jsonString);
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError);
-      console.error("JSON string:", jsonString);
-      return { success: false, error: "AI trả về JSON không hợp lệ" };
-    }
-
-    const parsed = quizGenerationSchema.safeParse(parsedJson);
+    // Validate against schema
+    const parsed = quizGenerationSchema.safeParse(parseResult.data);
     if (!parsed.success) {
       console.error("Quiz validation error:", parsed.error);
-      return { success: false, error: "Dữ liệu quiz không hợp lệ" };
+      return { success: false, error: "Dữ liệu quiz không đúng định dạng" };
     }
 
     return { success: true, questions: parsed.data.questions };
@@ -212,7 +207,15 @@ Yêu cầu:
 - Độ khó phù hợp: ${difficulty}
 - Giải thích chi tiết để học sinh hiểu
 
-Trả về JSON theo format:
+QUAN TRỌNG - Quy tắc JSON:
+- Tất cả backslash phải được escape thành \\\\ (ví dụ: \\frac thành \\\\frac)
+- Dấu ngoặc kép trong nội dung phải escape thành \\"
+- Newline phải là \\n, tab phải là \\t
+- Công thức LaTeX: \\frac{a}{b} → \\\\frac{a}{b}, \\sqrt{x} → \\\\sqrt{x}
+- Ký hiệu Hóa: H_2SO_4, NaOH, CH_3COOH (không cần escape)
+- correctAnswer phải là số nguyên từ 0-3
+
+Trả về ĐÚNG định dạng JSON sau (không thêm text, markdown, hoặc giải thích):
 {
   "questions": [
     {
@@ -234,6 +237,7 @@ Trả về JSON theo format:
           messages: [{ role: "user", content: prompt }],
           temperature: 0.7,
           maxTokens: 4000,
+          responseFormat: "json_object",
         },
         {
           maxTokens: 4000,
@@ -243,35 +247,20 @@ Trả về JSON theo format:
 
     const content = response.content || "";
     
-    // Extract JSON from response
-    let jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("AI response without JSON:", content);
-      return { success: false, error: "AI không trả về JSON hợp lệ" };
+    // Use safe JSON parser
+    const parseResult = parseAIJSON<{ questions: unknown }>(content);
+    
+    if (!parseResult.success || !parseResult.data) {
+      console.error("Failed to parse AI response:", parseResult.error);
+      console.error("Raw content:", content.substring(0, 500));
+      return { success: false, error: `Lỗi parse JSON: ${parseResult.error}` };
     }
 
-    // Fix common JSON issues from AI
-    let jsonString = jsonMatch[0];
-    // Replace invalid escape sequences
-    jsonString = jsonString.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-    // Fix newlines in strings
-    jsonString = jsonString.replace(/(?<!\\)\n/g, '\\n');
-    jsonString = jsonString.replace(/(?<!\\)\r/g, '\\r');
-    jsonString = jsonString.replace(/(?<!\\)\t/g, '\\t');
-
-    let parsedJson;
-    try {
-      parsedJson = JSON.parse(jsonString);
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError);
-      console.error("JSON string:", jsonString);
-      return { success: false, error: "AI trả về JSON không hợp lệ" };
-    }
-
-    const parsed = quizGenerationSchema.safeParse(parsedJson);
+    // Validate against schema
+    const parsed = quizGenerationSchema.safeParse(parseResult.data);
     if (!parsed.success) {
       console.error("Personalized quiz validation error:", parsed.error);
-      return { success: false, error: "Dữ liệu quiz không hợp lệ" };
+      return { success: false, error: "Dữ liệu quiz không đúng định dạng" };
     }
 
     return { success: true, questions: parsed.data.questions };

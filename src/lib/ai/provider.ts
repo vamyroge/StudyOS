@@ -49,6 +49,7 @@ export async function createCompletion(
         max_tokens: request.maxTokens || config.maxTokens,
         temperature: request.temperature ?? config.temperature,
         stream: false,
+        ...(request.responseFormat === "json_object" ? { response_format: { type: "json_object" } } : {}),
       }),
       signal: AbortSignal.timeout(getRequestTimeoutMs()),
     });

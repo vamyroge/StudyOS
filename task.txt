@@ -1,1 +1,78 @@
-fix lỗi này khi tạo quizz Lỗi Quick Quiz: Lỗi AI: Bad escaped character in JSON at position 6418 (line 124 column 243)
+Fix triệt để lỗi tạo Quick Quiz:
+
+`Quick Quiz: Lỗi AI: Bad escaped character in JSON at position 6418 (line 124 column 243)`
+
+Mục tiêu: Quick Quiz phải tạo và render quiz ổn định kể cả khi câu hỏi/đáp án chứa công thức Toán, Lý, Hóa, ký hiệu đặc biệt, Unicode, LaTeX, dấu ngoặc kép, backslash, newline hoặc nội dung tiếng Việt.
+
+Hãy tự kiểm tra toàn bộ flow hiện tại từ:
+AI response → parsing → JSON validation → quiz normalization → database/state → frontend rendering.
+
+Yêu cầu:
+
+1. KHÔNG dùng cách sửa lỗi bằng replace chuỗi hoặc try/catch rồi bỏ qua dữ liệu.
+2. Xác định chính xác nguyên nhân `Bad escaped character`.
+3. Không parse JSON bằng các regex mong manh.
+4. Ép AI trả về structured JSON theo schema cố định.
+5. Validate schema trước khi sử dụng dữ liệu.
+6. Xử lý an toàn các ký tự:
+
+   * `\`
+   * `"`
+   * newline
+   * tab
+   * Unicode
+   * LaTeX như `\frac`, `\sqrt`, `\Delta`, `\rightarrow`
+   * công thức Hóa như `H_2SO_4`, `NaOH`, `CH_3COOH`
+   * công thức Lý/Toán
+7. Nếu provider trả markdown code fence như `json ... ` thì xử lý đúng cách trước khi parse.
+8. Nếu AI trả thêm text ngoài JSON, sử dụng structured output/JSON schema nếu provider hỗ trợ; nếu không thì xây parser an toàn có validation rõ ràng.
+9. Không làm mất công thức hoặc thay đổi nội dung câu hỏi chỉ để JSON parse được.
+10. Thêm fallback/retry khi AI trả malformed JSON. Retry phải yêu cầu model sửa đúng schema thay vì tự đoán hoặc tự sửa nội dung.
+11. Frontend phải render công thức an toàn, không làm crash React.
+12. Kiểm tra cả Quick Quiz và các flow quiz khác để dùng chung một JSON parser/validator nếu phù hợp.
+
+Schema quiz nên có dạng tương đương:
+
+{
+"title": "string",
+"questions": [
+{
+"question": "string",
+"options": ["string", "string", "string", "string"],
+"correctAnswer": 0,
+"explanation": "string"
+}
+]
+}
+
+`correctAnswer` phải là số nguyên từ 0 đến 3.
+
+Đặc biệt: KHÔNG đưa raw LaTeX vào JSON theo cách làm JSON invalid. JSON phải chứa chuỗi hợp lệ; ví dụ backslash trong LaTeX phải được escape đúng theo chuẩn JSON. Sau khi parse xong mới đưa nội dung sang renderer công thức.
+
+Hãy kiểm tra request/response thực tế của AI provider để xác định chính xác vị trí lỗi thay vì chỉ đoán.
+
+Sau khi sửa:
+
+* chạy typecheck
+* chạy lint nếu project có
+* build project
+* test Quick Quiz với ít nhất các trường hợp:
+
+  1. câu hỏi Toán có `\frac`, `\sqrt`, `\Delta`
+  2. câu Hóa có `H_2SO_4`, `CH_3COOH`
+  3. câu Lý có ký hiệu Hy Lạp
+  4. tiếng Việt có dấu
+  5. câu chứa `"`, `'`, `\`, newline
+  6. AI trả markdown code fence
+  7. AI trả malformed JSON
+  8. quiz nhiều câu dài
+
+Không chỉ che giấu lỗi. Hãy sửa ở tầng tạo/parsing dữ liệu để Quick Quiz hoạt động ổn định lâu dài.
+
+Sau khi hoàn thành, báo cáo:
+
+* nguyên nhân gốc
+* file đã sửa
+* cách xử lý JSON
+* cách xử lý LaTeX/ký tự đặc biệt
+* kết quả test/build.
