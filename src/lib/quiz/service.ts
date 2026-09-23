@@ -73,13 +73,13 @@ export async function generateQuiz({
 ${topicsPrompt}
 
 Yêu cầu:
-- Mỗi câu có 4 đáp án (A, B, C, D)
+- Mỗi câu có 4 đáp án
 - Chỉ 1 đáp án đúng
 - Câu hỏi phải chính xác, rõ ràng
 - Giải thích ngắn gọn tại sao đáp án đúng
 - Phù hợp với chương trình THPT Việt Nam
 
-Trả về CHÍNH XÁC JSON theo format sau (không thêm text nào khác):
+Trả về JSON theo format sau:
 {
   "questions": [
     {
@@ -87,9 +87,9 @@ Trả về CHÍNH XÁC JSON theo format sau (không thêm text nào khác):
       "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
       "correctAnswer": 0,
       "explanation": "Giải thích đáp án đúng",
-      "subject": "${subject}",
+      "subject": "` + subject + `",
       "topic": "Tên chủ đề cụ thể",
-      "difficulty": "${difficulty}"
+      "difficulty": "` + difficulty + `"
     }
   ]
 }`;
@@ -191,7 +191,7 @@ Yêu cầu:
 - Độ khó phù hợp: ${difficulty}
 - Giải thích chi tiết để học sinh hiểu
 
-Trả về CHÍNH XÁC JSON theo format:
+Trả về JSON theo format:
 {
   "questions": [
     {
@@ -199,9 +199,9 @@ Trả về CHÍNH XÁC JSON theo format:
       "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
       "correctAnswer": 0,
       "explanation": "Giải thích chi tiết",
-      "subject": "${subject}",
+      "subject": "` + subject + `",
       "topic": "Tên chủ đề",
-      "difficulty": "${difficulty}"
+      "difficulty": "` + difficulty + `"
     }
   ]
 }`;
