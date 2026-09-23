@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Brain, Zap, BookOpen, Loader2, Sparkles } from "lucide-react";
 import { generateQuiz, generatePersonalizedQuiz, createQuizAssessment, getRecommendedDifficulty } from "@/lib/quiz/service";
-import { getProfile } from "@/lib/auth/utils";
 
 interface QuizSetupProps {
   subjects: Array<{ id: string; name: string }>;
