@@ -74,22 +74,42 @@ export async function generateQuiz({
 
 ${topicsPrompt}
 
-Yêu cầu:
+Yêu cầu nội dung:
 - Mỗi câu có 4 đáp án
 - Chỉ 1 đáp án đúng
 - Câu hỏi phải chính xác, rõ ràng
 - Giải thích ngắn gọn tại sao đáp án đúng
 - Phù hợp với chương trình THPT Việt Nam
 
-QUAN TRỌNG - Quy tắc JSON:
-- Tất cả backslash phải được escape thành \\\\ (ví dụ: \\frac thành \\\\frac)
-- Dấu ngoặc kép trong nội dung phải escape thành \\"
-- Newline phải là \\n, tab phải là \\t
-- Công thức LaTeX: \\frac{a}{b} → \\\\frac{a}{b}, \\sqrt{x} → \\\\sqrt{x}
-- Ký hiệu Hóa: H_2SO_4, NaOH, CH_3COOH (không cần escape)
-- correctAnswer phải là số nguyên từ 0-3
+QUAN TRỌNG - Format công thức toán/lý/hóa:
+- ƯU TIÊN dùng ký tự Unicode: x², x₁, √x, Δt, α, β, λ, ∫, ∑
+- Chỉ dùng LaTeX cho công thức phức tạp
+- Hóa học: H₂O, CO₂, Fe³⁺, SO₄²⁻ (dùng subscript/superscript Unicode)
 
-Trả về ĐÚNG định dạng JSON sau (không thêm text, markdown, hoặc giải thích):
+CỰC KỲ QUAN TRỌNG - Quy tắc JSON bắt buộc:
+1. KHÔNG BAO GIỜ dùng ký tự " bên trong string mà không escape
+2. ĐỂ escape dấu ngoặc kép: dùng \\"
+3. KHÔNG dùng newline thật, phải dùng \\n
+4. NẾU dùng LaTeX (chỉ khi cần thiết):
+   - \\frac{a}{b} PHẢI viết là \\\\frac{a}{b}
+   - \\sqrt{x} PHẢI viết là \\\\sqrt{x}
+   - MỌI backslash đều phải double: \\\\ 
+5. correctAnswer PHẢI là số 0, 1, 2, hoặc 3 (không phải string)
+
+VÍ DỤ SAI (sẽ gây lỗi):
+{
+  "question": "Tính \\frac{1}{2}",  ← SAI: thiếu escape backslash
+  "options": ["Câu có "dấu ngoặc""]  ← SAI: quote không escape
+}
+
+VÍ DỤ ĐÚNG:
+{
+  "question": "Tính \\\\frac{1}{2} hoặc tốt hơn: Tính 1/2",
+  "options": ["Câu có \\"dấu ngoặc\\""],
+  "correctAnswer": 0
+}
+
+RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, markdown, giải thích thêm):
 {
   "questions": [
     {
@@ -201,21 +221,41 @@ export async function generatePersonalizedQuiz({
 
 ${contextPrompt}
 
-Yêu cầu:
+Yêu cầu nội dung:
 - Mỗi câu có 4 đáp án
 - Câu hỏi phải giúp học sinh cải thiện điểm yếu
 - Độ khó phù hợp: ${difficulty}
 - Giải thích chi tiết để học sinh hiểu
 
-QUAN TRỌNG - Quy tắc JSON:
-- Tất cả backslash phải được escape thành \\\\ (ví dụ: \\frac thành \\\\frac)
-- Dấu ngoặc kép trong nội dung phải escape thành \\"
-- Newline phải là \\n, tab phải là \\t
-- Công thức LaTeX: \\frac{a}{b} → \\\\frac{a}{b}, \\sqrt{x} → \\\\sqrt{x}
-- Ký hiệu Hóa: H_2SO_4, NaOH, CH_3COOH (không cần escape)
-- correctAnswer phải là số nguyên từ 0-3
+QUAN TRỌNG - Format công thức toán/lý/hóa:
+- ƯU TIÊN dùng ký tự Unicode: x², x₁, √x, Δt, α, β, λ, ∫, ∑
+- Chỉ dùng LaTeX cho công thức phức tạp
+- Hóa học: H₂O, CO₂, Fe³⁺, SO₄²⁻ (dùng subscript/superscript Unicode)
 
-Trả về ĐÚNG định dạng JSON sau (không thêm text, markdown, hoặc giải thích):
+CỰC KỲ QUAN TRỌNG - Quy tắc JSON bắt buộc:
+1. KHÔNG BAO GIỜ dùng ký tự " bên trong string mà không escape
+2. ĐỂ escape dấu ngoặc kép: dùng \\"
+3. KHÔNG dùng newline thật, phải dùng \\n
+4. NẾU dùng LaTeX (chỉ khi cần thiết):
+   - \\frac{a}{b} PHẢI viết là \\\\frac{a}{b}
+   - \\sqrt{x} PHẢI viết là \\\\sqrt{x}
+   - MỌI backslash đều phải double: \\\\ 
+5. correctAnswer PHẢI là số 0, 1, 2, hoặc 3 (không phải string)
+
+VÍ DỤ SAI (sẽ gây lỗi):
+{
+  "question": "Tính \\frac{1}{2}",  ← SAI: thiếu escape backslash
+  "options": ["Câu có "dấu ngoặc""]  ← SAI: quote không escape
+}
+
+VÍ DỤ ĐÚNG:
+{
+  "question": "Tính \\\\frac{1}{2} hoặc tốt hơn: Tính 1/2",
+  "options": ["Câu có \\"dấu ngoặc\\""],
+  "correctAnswer": 0
+}
+
+RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, markdown, giải thích thêm):
 {
   "questions": [
     {
