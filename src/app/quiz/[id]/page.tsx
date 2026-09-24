@@ -5,54 +5,124 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { submitQuizAnswer, completeQuizAssessment, type QuizQuestion } from "@/lib/quiz/service";
+import { submitQuizAnswer, completeQuizAssessment, type QuizQuestion, getQuizQuestions } from "@/lib/quiz/service";
 import { CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/async-client";
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+
+interface QuizQuestionWithId extends QuizQuestion {
+  id: string;
+}
 
 export default function QuizTakingPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const [assessmentId, setAssessmentId] = useState<string>("");
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [questions, setQuestions] = useState<QuizQuestionWithId[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<Array<{ question: number; answer: number; correct: boolean }>>([]);
+  const [answers, setAnswers] = useState<Array<{ questionId: string; answerIndex: number; correct: boolean }>>([]);
   const [showResult, setShowResult] = useState(false);
   const [loading, setLoading] = useState(false);
   const [startTime] = useState(Date.now());
   const [submitting, setSubmitting] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    params.then(({ id }) => {
+    async function loadQuiz() {
+      const { id } = await params;
       setAssessmentId(id);
+      
+      // Try to load from database first
+      try {
+        const supabase = await createClient();
+        const { data: quizQuestions } = await supabase
+          .from("quiz_questions")
+          .select("*")
+          .eq("assessment_id", id)
+          .order("question_order", { ascending: true });
+
+        if (quizQuestions && quizQuestions.length > 0) {
+          const formattedQuestions = quizQuestions.map((q: any) => ({
+            id: q.id,
+            question: q.question_text,
+            options: q.options,
+            correctAnswer: q.correct_answer_index,
+            explanation: q.explanation,
+            subject: "",
+            topic: q.topic || "",
+            difficulty: q.difficulty || "basic",
+          }));
+          setQuestions(formattedQuestions);
+          setInitialLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to load questions from database:", error);
+      }
+
+      // Fallback to sessionStorage for backward compatibility
       const stored = sessionStorage.getItem(`quiz_${id}`);
       if (stored) {
-        setQuestions(JSON.parse(stored));
+        const storedQuestions = JSON.parse(stored);
+        // Add temporary IDs for sessionStorage questions
+        const questionsWithIds = storedQuestions.map((q: QuizQuestion, idx: number) => ({
+          ...q,
+          id: `temp_${idx}`,
+        }));
+        setQuestions(questionsWithIds);
       } else {
         router.push("/quiz");
       }
-    });
+      setInitialLoading(false);
+    }
+    
+    loadQuiz();
   }, [params, router]);
 
   const currentQuestion = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
+  // Markdown renderer for STEM content (Math, Physics, Chemistry)
+  const MarkdownRenderer = ({ content }: { content: string }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath, remarkGfm]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        p: ({ children }) => <span className="inline">{children}</span>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+
   async function handleAnswer(answerIndex: number) {
     if (showResult || loading) return;
 
     setSelectedAnswer(answerIndex);
-    setShowResult(true);
-    
-    const isCorrect = answerIndex === currentQuestion.correctAnswer;
-    setAnswers([...answers, { question: currentIndex, answer: answerIndex, correct: isCorrect }]);
-
     setLoading(true);
-    await submitQuizAnswer({
+
+    // SERVER-SIDE GRADING: Submit to server and get result
+    const result = await submitQuizAnswer({
       assessmentId,
-      questionId: `generated_${currentIndex}`,
-      selectedAnswer: currentQuestion.options[answerIndex],
-      isCorrect,
-      topic: currentQuestion.topic,
-      difficulty: currentQuestion.difficulty,
+      quizQuestionId: currentQuestion.id,
+      selectedAnswerIndex: answerIndex,
     });
+
+    if (!result.success) {
+      console.error("Failed to submit answer:", result.error);
+      setLoading(false);
+      return;
+    }
+
+    // Use server-calculated result
+    const isCorrect = result.isCorrect ?? false;
+    setAnswers([...answers, { questionId: currentQuestion.id, answerIndex, correct: isCorrect }]);
+    
+    setShowResult(true);
     setLoading(false);
   }
 
@@ -62,27 +132,33 @@ export default function QuizTakingPage({ params }: { params: Promise<{ id: strin
       setSelectedAnswer(null);
       setShowResult(false);
     } else {
-      // Complete quiz
+      // Complete quiz - prevent double submission
+      if (submitting) return;
+      
       setSubmitting(true);
       const duration = Math.floor((Date.now() - startTime) / 1000);
       
-      // Save quiz details for result page
-      const quizDetails = {
-        questions: questions,
-        answers: answers,
-      };
-      sessionStorage.setItem(`quiz_result_${assessmentId}`, JSON.stringify(quizDetails));
+      const result = await completeQuizAssessment({ assessmentId, durationSeconds: duration });
       
-      await completeQuizAssessment({ assessmentId, durationSeconds: duration });
+      if (!result.success) {
+        console.error("Failed to complete quiz:", result.error);
+        alert("Không thể hoàn thành quiz. Vui lòng thử lại.");
+        setSubmitting(false);
+        return;
+      }
+      
       sessionStorage.removeItem(`quiz_${assessmentId}`);
       router.push(`/quiz/result/${assessmentId}`);
     }
   }
 
-  if (questions.length === 0) {
+  if (initialLoading || questions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Đang tải quiz...</p>
+        </div>
       </div>
     );
   }
@@ -120,7 +196,7 @@ export default function QuizTakingPage({ params }: { params: Promise<{ id: strin
                 </span>
               </div>
               <h2 className="text-xl font-semibold leading-relaxed">
-                {currentQuestion.question}
+                <MarkdownRenderer content={currentQuestion.question} />
               </h2>
             </div>
 
@@ -159,7 +235,9 @@ export default function QuizTakingPage({ params }: { params: Promise<{ id: strin
                          showWrong ? <XCircle className="h-4 w-4" /> :
                          String.fromCharCode(65 + index)}
                       </div>
-                      <span className="flex-1">{option}</span>
+                      <span className="flex-1">
+                        <MarkdownRenderer content={option} />
+                      </span>
                     </div>
                   </button>
                 );
@@ -170,7 +248,9 @@ export default function QuizTakingPage({ params }: { params: Promise<{ id: strin
             {showResult && (
               <div className="rounded-lg bg-muted p-4">
                 <p className="text-sm font-medium mb-2">Giải thích:</p>
-                <p className="text-sm text-muted-foreground">{currentQuestion.explanation}</p>
+                <div className="text-sm text-muted-foreground">
+                  <MarkdownRenderer content={currentQuestion.explanation} />
+                </div>
               </div>
             )}
 

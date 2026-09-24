@@ -94,6 +94,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
         quizType: "quick_assessment",
         totalQuestions: questions.length,
         difficultyLevel: quickQuiz.useAdaptive ? "adaptive" : finalDifficulty,
+        questions, // Save questions to database
       });
 
       if (!createSuccess || !assessmentId) {
@@ -102,6 +103,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
         return;
       }
 
+      // Still keep in sessionStorage for backward compatibility and offline access
       sessionStorage.setItem(`quiz_${assessmentId}`, JSON.stringify(questions));
       router.push(`/quiz/${assessmentId}`);
     } catch (err) {
@@ -145,6 +147,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
         quizType: "personalized",
         totalQuestions: questions.length,
         difficultyLevel: "adaptive",
+        questions, // Save questions to database
       });
 
       if (!createSuccess || !assessmentId) {
@@ -153,6 +156,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
         return;
       }
 
+      // Still keep in sessionStorage for backward compatibility and offline access
       sessionStorage.setItem(`quiz_${assessmentId}`, JSON.stringify(questions));
       router.push(`/quiz/${assessmentId}`);
     } catch (err) {

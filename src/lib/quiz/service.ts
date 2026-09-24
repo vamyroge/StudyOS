@@ -277,12 +277,14 @@ export async function createQuizAssessment({
   totalQuestions,
   difficultyLevel,
   classId,
+  questions,
 }: {
   subjectId?: string;
   quizType: "personalized" | "quick_assessment" | "topic_review";
   totalQuestions: number;
   difficultyLevel?: "basic" | "intermediate" | "advanced" | "adaptive";
   classId?: string;
+  questions?: QuizQuestion[];
 }): Promise<{ success: boolean; assessmentId?: string; error?: string }> {
   const user = await requireAuth();
   const supabase = await createClient();
@@ -307,33 +309,52 @@ export async function createQuizAssessment({
     return { success: false, error: "Không thể tạo assessment" };
   }
 
+  // Save quiz questions to database if provided
+  if (questions && questions.length > 0) {
+    const questionRecords = questions.map((q, index) => ({
+      assessment_id: data.id,
+      question_text: q.question,
+      options: q.options,
+      correct_answer_index: q.correctAnswer,
+      explanation: q.explanation,
+      topic: q.topic,
+      difficulty: q.difficulty,
+      question_order: index,
+    }));
+
+    const { error: questionsError } = await supabase
+      .from("quiz_questions")
+      .insert(questionRecords);
+
+    if (questionsError) {
+      console.error("Failed to save quiz questions:", questionsError);
+      // Delete the assessment if questions failed to save
+      await supabase.from("quiz_assessments").delete().eq("id", data.id);
+      return { success: false, error: "Không thể lưu câu hỏi quiz" };
+    }
+  }
+
   return { success: true, assessmentId: data.id };
 }
 
 export async function submitQuizAnswer({
   assessmentId,
-  questionId,
-  selectedAnswer,
-  isCorrect,
+  quizQuestionId,
+  selectedAnswerIndex,
   timeSpent,
-  topic,
-  difficulty,
 }: {
   assessmentId: string;
-  questionId: string;
-  selectedAnswer: string;
-  isCorrect: boolean;
+  quizQuestionId: string;
+  selectedAnswerIndex: number;
   timeSpent?: number;
-  topic?: string;
-  difficulty?: string;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; isCorrect?: boolean; error?: string }> {
   const user = await requireAuth();
   const supabase = await createClient();
 
   // Verify assessment belongs to user
   const { data: assessment } = await supabase
     .from("quiz_assessments")
-    .select("id")
+    .select("id, student_id")
     .eq("id", assessmentId)
     .eq("student_id", user.id)
     .single();
@@ -342,25 +363,44 @@ export async function submitQuizAnswer({
     return { success: false, error: "Assessment not found" };
   }
 
-  // Store topic and difficulty in metadata for mastery tracking
+  // SERVER-SIDE GRADING: Get correct answer from database
+  const { data: question } = await supabase
+    .from("quiz_questions")
+    .select("id, correct_answer_index, topic, difficulty, options")
+    .eq("id", quizQuestionId)
+    .eq("assessment_id", assessmentId)
+    .single();
+
+  if (!question) {
+    return { success: false, error: "Question not found" };
+  }
+
+  // SERVER-SIDE VALIDATION: Calculate isCorrect
+  const isCorrect = selectedAnswerIndex === question.correct_answer_index;
+  const selectedAnswerText = question.options[selectedAnswerIndex] || "";
+
+  // Store answer with metadata for mastery tracking
   const metadata: Record<string, any> = {};
-  if (topic) metadata.topic = topic;
-  if (difficulty) metadata.difficulty = difficulty;
+  if (question.topic) metadata.topic = question.topic;
+  if (question.difficulty) metadata.difficulty = question.difficulty;
 
   const { error } = await supabase.from("quiz_answers").insert({
     assessment_id: assessmentId,
-    question_id: questionId,
-    selected_answer: selectedAnswer,
+    quiz_question_id: quizQuestionId,
+    question_id: null, // Not using old questions table
+    selected_answer: selectedAnswerText, // Keep for backward compatibility
+    selected_answer_index: selectedAnswerIndex,
     is_correct: isCorrect,
     time_spent_seconds: timeSpent || null,
     metadata,
   });
 
   if (error) {
+    console.error("Failed to save quiz answer:", error);
     return { success: false, error: "Không thể lưu câu trả lời" };
   }
 
-  return { success: true };
+  return { success: true, isCorrect };
 }
 
 export async function completeQuizAssessment({
@@ -385,8 +425,32 @@ export async function completeQuizAssessment({
 
   const totalQuestions = answers.length;
   const correctAnswers = answers.filter((a) => a.is_correct).length;
+  const wrongAnswers = totalQuestions - correctAnswers;
   const accuracy = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
   const score = accuracy;
+
+  // VALIDATION: Ensure data integrity
+  if (correctAnswers + wrongAnswers !== totalQuestions) {
+    console.error("Quiz grading validation failed:", {
+      total: totalQuestions,
+      correct: correctAnswers,
+      wrong: wrongAnswers,
+    });
+    return { 
+      success: false, 
+      error: "Lỗi tính điểm: Tổng câu không khớp" 
+    };
+  }
+
+  // DEBUG LOG in development
+  if (process.env.NODE_ENV === "development") {
+    console.log("Quiz grading validation:", {
+      total: totalQuestions,
+      correct: correctAnswers,
+      wrong: wrongAnswers,
+      percentage: Math.round(accuracy),
+    });
+  }
 
   const { data, error } = await supabase
     .from("quiz_assessments")
@@ -403,7 +467,16 @@ export async function completeQuizAssessment({
     .single();
 
   if (error || !data) {
+    console.error("Failed to complete assessment:", error);
     return { success: false, error: "Không thể hoàn thành assessment" };
+  }
+
+  // Verify the saved data matches our calculation
+  if (data.correct_answers !== correctAnswers || Math.abs(data.accuracy - accuracy) > 0.01) {
+    console.error("Score mismatch after save:", {
+      calculated: { correct: correctAnswers, accuracy },
+      saved: { correct: data.correct_answers, accuracy: data.accuracy },
+    });
   }
 
   // Update topic mastery after completing assessment
@@ -673,4 +746,35 @@ async function generateLearningRecommendations(
       confidence,
     });
   }
+}
+
+/**
+ * Get quiz questions from database for an assessment
+ */
+export async function getQuizQuestions(
+  assessmentId: string
+): Promise<QuizQuestion[]> {
+  const user = await requireAuth();
+  const supabase = await createClient();
+
+  const { data: questions, error } = await supabase
+    .from("quiz_questions")
+    .select("*")
+    .eq("assessment_id", assessmentId)
+    .order("question_order", { ascending: true });
+
+  if (error || !questions) {
+    console.error("Failed to fetch quiz questions:", error);
+    return [];
+  }
+
+  return questions.map((q: any) => ({
+    question: q.question_text,
+    options: q.options,
+    correctAnswer: q.correct_answer_index,
+    explanation: q.explanation,
+    subject: "",
+    topic: q.topic || "",
+    difficulty: q.difficulty || "basic",
+  }));
 }
