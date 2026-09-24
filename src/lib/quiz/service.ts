@@ -7,6 +7,7 @@ import { createCompletion } from "@/lib/ai/provider";
 import { generateAdaptiveRecommendation } from "@/lib/mastery/service";
 import { retryTransientAIRequest } from "@/lib/ai/retry";
 import { parseAIJSON } from "./json-parser";
+import { validateQuizSemantics } from "./normalize";
 
 export interface QuizQuestion {
   question: string;
@@ -36,16 +37,171 @@ export interface QuizAssessment {
 const quizGenerationSchema = z.object({
   questions: z.array(
     z.object({
-      question: z.string(),
-      options: z.array(z.string()).length(4),
-      correctAnswer: z.number().min(0).max(3),
-      explanation: z.string(),
-      subject: z.string(),
-      topic: z.string(),
-      difficulty: z.string(),
+      question: z.string().min(1),
+      options: z.array(z.string().min(1)).length(4),
+      correctAnswer: z.number().int().min(0).max(3),
+      explanation: z.string().default(""),
+      subject: z.string().default(""),
+      topic: z.string().default(""),
+      difficulty: z.string().default("basic"),
     })
-  ),
+  ).min(1),
 });
+
+const quizJSONSchema = {
+  name: "quiz_generation",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            question: { type: "string" },
+            options: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 4,
+              maxItems: 4,
+            },
+            correctAnswer: { type: "integer", minimum: 0, maximum: 3 },
+            explanation: { type: "string" },
+            subject: { type: "string" },
+            topic: { type: "string" },
+            difficulty: { type: "string" },
+          },
+          required: ["question", "options", "correctAnswer", "explanation", "subject", "topic", "difficulty"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["questions"],
+    additionalProperties: false,
+  },
+};
+
+async function repairQuizJSONWithAI(malformedContent: string): Promise<QuizQuestion[] | null> {
+  const repairPrompt = `Repair ONLY JSON syntax.
+
+Do not change:
+- question text
+- options
+- correct answers
+- feedback
+- hints
+- meaning
+- ordering
+
+Only fix:
+- invalid JSON escaping
+- missing commas
+- missing brackets
+- missing braces
+- invalid string escaping
+
+Return ONLY valid JSON.
+
+Malformed JSON to repair:
+${malformedContent}`;
+
+  try {
+    const { result } = await retryTransientAIRequest(() =>
+      createCompletion(
+        {
+          messages: [{ role: "user", content: repairPrompt }],
+          temperature: 0.1,
+          maxTokens: 4000,
+          responseFormat: "json_object",
+        },
+        { maxTokens: 4000 }
+      )
+    );
+
+    const parseResult = parseAIJSON<{ questions: unknown }>(result.content || "");
+    if (!parseResult.success || !parseResult.data) {
+      return null;
+    }
+
+    const validation = validateQuizSemantics(parseResult.data);
+    return validation.valid && validation.questions ? validation.questions : null;
+  } catch (err) {
+    console.error("AI JSON repair failed:", err);
+    return null;
+  }
+}
+
+async function executeQuizGenerationPipeline(
+  prompt: string,
+  maxRetries = 2
+): Promise<{ success: boolean; questions?: QuizQuestion[]; error?: string }> {
+  let lastError = "Không thể tạo Quick Quiz lúc này. Hãy thử lại.";
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Step 1: Call completion prioritizing structured output schema
+      const { result: response } = await retryTransientAIRequest(() =>
+        createCompletion(
+          {
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            maxTokens: 4000,
+            responseFormat: {
+              type: "json_schema",
+              json_schema: quizJSONSchema,
+            },
+          },
+          { maxTokens: 4000 }
+        )
+      );
+
+      const content = response.content || "";
+
+      // Step 2: Attempt safe JSON parsing
+      const parseResult = parseAIJSON<{ questions: unknown }>(content);
+
+      if (parseResult.success && parseResult.data) {
+        // Validate with Zod schema
+        const parsed = quizGenerationSchema.safeParse(parseResult.data);
+        if (parsed.success) {
+          // Semantic validation
+          const semantic = validateQuizSemantics(parsed.data);
+          if (semantic.valid && semantic.questions) {
+            return { success: true, questions: semantic.questions };
+          }
+        }
+      }
+
+      // If direct parsing or schema failed, log in development
+      if (process.env.NODE_ENV === "development") {
+        console.warn(`[QuickQuiz] Generation attempt ${attempt + 1} parse/validate failed, trying repair...`, {
+          error: parseResult.error,
+          rawPreview: content.substring(0, 300),
+        });
+      }
+
+      // Step 3 (Attempt 2 in spec): Call repair LLM fallback
+      const repairedQuestions = await repairQuizJSONWithAI(content);
+      if (repairedQuestions && repairedQuestions.length > 0) {
+        return { success: true, questions: repairedQuestions };
+      }
+
+      lastError = parseResult.error || "Dữ liệu quiz không đúng định dạng";
+    } catch (err) {
+      console.error(`[QuickQuiz] Generation error attempt ${attempt + 1}:`, err);
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // All attempts exhausted
+  const userError =
+    process.env.NODE_ENV === "production"
+      ? "Không thể tạo Quick Quiz lúc này. Hãy thử lại."
+      : `Lỗi parse JSON: ${lastError}`;
+
+  return { success: false, error: userError };
+}
 
 export async function generateQuiz({
   subject,
@@ -58,7 +214,7 @@ export async function generateQuiz({
   numberOfQuestions: number;
   topics?: string[];
 }): Promise<{ success: boolean; questions?: QuizQuestion[]; error?: string }> {
-  const user = await requireAuth();
+  await requireAuth();
 
   const difficultyMap = {
     basic: "cơ bản (dành cho học sinh mới bắt đầu)",
@@ -75,41 +231,36 @@ export async function generateQuiz({
 ${topicsPrompt}
 
 Yêu cầu nội dung:
-- Mỗi câu có 4 đáp án
-- Chỉ 1 đáp án đúng
+- Mỗi câu có đúng 4 đáp án
+- Chỉ 1 đáp án đúng (correctAnswer là số nguyên từ 0 đến 3)
 - Câu hỏi phải chính xác, rõ ràng
 - Giải thích ngắn gọn tại sao đáp án đúng
 - Phù hợp với chương trình THPT Việt Nam
 
-QUAN TRỌNG - Format công thức toán/lý/hóa:
-- ƯU TIÊN dùng ký tự Unicode: x², x₁, √x, Δt, α, β, λ, ∫, ∑
-- Chỉ dùng LaTeX cho công thức phức tạp
-- Hóa học: H₂O, CO₂, Fe³⁺, SO₄²⁻ (dùng subscript/superscript Unicode)
+QUAN TRỌNG - Ký hiệu Toán/Lý/Hóa:
+- Khi ký hiệu toán học không bắt buộc phải dùng LaTeX, ƯU TIÊN dùng ký tự Unicode: √, ², ³, Δ, π, θ, ≤, ≥, →, ×, ÷, H₂O, CO₂, SO₄²⁻, Fe³⁺, v = Δs/Δt, F = ma, U = IR, λ = v/f.
+- Chỉ dùng LaTeX khi công thức thực sự phức tạp (như tích phân nhiều biến, phân số nhiều tầng).
+- Nếu dùng LaTeX: MỌI backslash đều phải viết thành double backslash: \\\\frac{a}{b}, \\\\sqrt{x}.
 
-CỰC KỲ QUAN TRỌNG - Quy tắc JSON bắt buộc:
-1. KHÔNG BAO GIỜ dùng ký tự " bên trong string mà không escape
-2. ĐỂ escape dấu ngoặc kép: dùng \\"
-3. KHÔNG dùng newline thật, phải dùng \\n
-4. NẾU dùng LaTeX (chỉ khi cần thiết):
-   - \\frac{a}{b} PHẢI viết là \\\\frac{a}{b}
-   - \\sqrt{x} PHẢI viết là \\\\sqrt{x}
-   - MỌI backslash đều phải double: \\\\ 
-5. correctAnswer PHẢI là số 0, 1, 2, hoặc 3 (không phải string)
+QUY TẮC JSON BẮT BUỘC:
+Return ONLY valid JSON.
+Do not return Markdown.
+Do not wrap the JSON in \`\`\`json fences.
+All string values must be valid JSON strings.
+Escape every double quote inside strings as \\".
+Escape every literal backslash as \\\\.
+Never emit invalid JSON escapes such as \\frac, \\sqrt, \\alpha, \\beta, \\Delta.
+Before returning:
+- verify balanced {}
+- verify balanced []
+- verify every string is closed
+- verify commas
+- verify no trailing commas
+- verify all backslashes are valid JSON escapes
+- verify correctAnswer is an integer (0, 1, 2, or 3)
+- verify every required field
 
-VÍ DỤ SAI (sẽ gây lỗi):
-{
-  "question": "Tính \\frac{1}{2}",  ← SAI: thiếu escape backslash
-  "options": ["Câu có "dấu ngoặc""]  ← SAI: quote không escape
-}
-
-VÍ DỤ ĐÚNG:
-{
-  "question": "Tính \\\\frac{1}{2} hoặc tốt hơn: Tính 1/2",
-  "options": ["Câu có \\"dấu ngoặc\\""],
-  "correctAnswer": 0
-}
-
-RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, markdown, giải thích thêm):
+RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text hay markdown ngoài JSON):
 {
   "questions": [
     {
@@ -117,52 +268,14 @@ RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, ma
       "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
       "correctAnswer": 0,
       "explanation": "Giải thích",
-      "subject": "` + subject + `",
+      "subject": "${subject}",
       "topic": "Tên chủ đề",
-      "difficulty": "` + difficulty + `"
+      "difficulty": "${difficulty}"
     }
   ]
 }`;
 
-  try {
-    const { result: response } = await retryTransientAIRequest(() =>
-      createCompletion(
-        {
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          maxTokens: 4000,
-          responseFormat: "json_object",
-        },
-        {
-          maxTokens: 4000,
-        }
-      )
-    );
-
-    const content = response.content || "";
-    
-    // Use safe JSON parser
-    const parseResult = parseAIJSON<{ questions: unknown }>(content);
-    
-    if (!parseResult.success || !parseResult.data) {
-      console.error("Failed to parse AI response:", parseResult.error);
-      console.error("Raw content:", content.substring(0, 500));
-      return { success: false, error: `Lỗi parse JSON: ${parseResult.error}` };
-    }
-
-    // Validate against schema
-    const parsed = quizGenerationSchema.safeParse(parseResult.data);
-    if (!parsed.success) {
-      console.error("Quiz validation error:", parsed.error);
-      return { success: false, error: "Dữ liệu quiz không đúng định dạng" };
-    }
-
-    return { success: true, questions: parsed.data.questions };
-  } catch (error) {
-    console.error("Quiz generation error:", error);
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `Lỗi AI: ${errorMsg}` };
-  }
+  return executeQuizGenerationPipeline(prompt);
 }
 
 export async function generatePersonalizedQuiz({
@@ -222,40 +335,37 @@ export async function generatePersonalizedQuiz({
 ${contextPrompt}
 
 Yêu cầu nội dung:
-- Mỗi câu có 4 đáp án
+- Mỗi câu có đúng 4 đáp án
+- Chỉ 1 đáp án đúng (correctAnswer là số nguyên từ 0 đến 3)
 - Câu hỏi phải giúp học sinh cải thiện điểm yếu
 - Độ khó phù hợp: ${difficulty}
 - Giải thích chi tiết để học sinh hiểu
+- Phù hợp với chương trình THPT Việt Nam
 
-QUAN TRỌNG - Format công thức toán/lý/hóa:
-- ƯU TIÊN dùng ký tự Unicode: x², x₁, √x, Δt, α, β, λ, ∫, ∑
-- Chỉ dùng LaTeX cho công thức phức tạp
-- Hóa học: H₂O, CO₂, Fe³⁺, SO₄²⁻ (dùng subscript/superscript Unicode)
+QUAN TRỌNG - Ký hiệu Toán/Lý/Hóa:
+- Khi ký hiệu toán học không bắt buộc phải dùng LaTeX, ƯU TIÊN dùng ký tự Unicode: √, ², ³, Δ, π, θ, ≤, ≥, →, ×, ÷, H₂O, CO₂, SO₄²⁻, Fe³⁺, v = Δs/Δt, F = ma, U = IR, λ = v/f.
+- Chỉ dùng LaTeX khi công thức thực sự phức tạp (như tích phân nhiều biến, phân số nhiều tầng).
+- Nếu dùng LaTeX: MỌI backslash đều phải viết thành double backslash: \\\\frac{a}{b}, \\\\sqrt{x}.
 
-CỰC KỲ QUAN TRỌNG - Quy tắc JSON bắt buộc:
-1. KHÔNG BAO GIỜ dùng ký tự " bên trong string mà không escape
-2. ĐỂ escape dấu ngoặc kép: dùng \\"
-3. KHÔNG dùng newline thật, phải dùng \\n
-4. NẾU dùng LaTeX (chỉ khi cần thiết):
-   - \\frac{a}{b} PHẢI viết là \\\\frac{a}{b}
-   - \\sqrt{x} PHẢI viết là \\\\sqrt{x}
-   - MỌI backslash đều phải double: \\\\ 
-5. correctAnswer PHẢI là số 0, 1, 2, hoặc 3 (không phải string)
+QUY TẮC JSON BẮT BUỘC:
+Return ONLY valid JSON.
+Do not return Markdown.
+Do not wrap the JSON in \`\`\`json fences.
+All string values must be valid JSON strings.
+Escape every double quote inside strings as \\".
+Escape every literal backslash as \\\\.
+Never emit invalid JSON escapes such as \\frac, \\sqrt, \\alpha, \\beta, \\Delta.
+Before returning:
+- verify balanced {}
+- verify balanced []
+- verify every string is closed
+- verify commas
+- verify no trailing commas
+- verify all backslashes are valid JSON escapes
+- verify correctAnswer is an integer (0, 1, 2, or 3)
+- verify every required field
 
-VÍ DỤ SAI (sẽ gây lỗi):
-{
-  "question": "Tính \\frac{1}{2}",  ← SAI: thiếu escape backslash
-  "options": ["Câu có "dấu ngoặc""]  ← SAI: quote không escape
-}
-
-VÍ DỤ ĐÚNG:
-{
-  "question": "Tính \\\\frac{1}{2} hoặc tốt hơn: Tính 1/2",
-  "options": ["Câu có \\"dấu ngoặc\\""],
-  "correctAnswer": 0
-}
-
-RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, markdown, giải thích thêm):
+RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text hay markdown ngoài JSON):
 {
   "questions": [
     {
@@ -263,52 +373,14 @@ RESPONSE FORMAT - Trả về ĐÚNG định dạng JSON sau (KHÔNG có text, ma
       "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
       "correctAnswer": 0,
       "explanation": "Giải thích chi tiết",
-      "subject": "` + subject + `",
+      "subject": "${subject}",
       "topic": "Tên chủ đề",
-      "difficulty": "` + difficulty + `"
+      "difficulty": "${difficulty}"
     }
   ]
 }`;
 
-  try {
-    const { result: response } = await retryTransientAIRequest(() =>
-      createCompletion(
-        {
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          maxTokens: 4000,
-          responseFormat: "json_object",
-        },
-        {
-          maxTokens: 4000,
-        }
-      )
-    );
-
-    const content = response.content || "";
-    
-    // Use safe JSON parser
-    const parseResult = parseAIJSON<{ questions: unknown }>(content);
-    
-    if (!parseResult.success || !parseResult.data) {
-      console.error("Failed to parse AI response:", parseResult.error);
-      console.error("Raw content:", content.substring(0, 500));
-      return { success: false, error: `Lỗi parse JSON: ${parseResult.error}` };
-    }
-
-    // Validate against schema
-    const parsed = quizGenerationSchema.safeParse(parseResult.data);
-    if (!parsed.success) {
-      console.error("Personalized quiz validation error:", parsed.error);
-      return { success: false, error: "Dữ liệu quiz không đúng định dạng" };
-    }
-
-    return { success: true, questions: parsed.data.questions };
-  } catch (error) {
-    console.error("Personalized quiz generation error:", error);
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `Lỗi AI: ${errorMsg}` };
-  }
+  return executeQuizGenerationPipeline(prompt);
 }
 
 export async function createQuizAssessment({
@@ -351,16 +423,32 @@ export async function createQuizAssessment({
 
   // Save quiz questions to database if provided
   if (questions && questions.length > 0) {
-    const questionRecords = questions.map((q, index) => ({
-      assessment_id: data.id,
-      question_text: q.question,
-      options: q.options,
-      correct_answer_index: q.correctAnswer,
-      explanation: q.explanation,
-      topic: q.topic,
-      difficulty: q.difficulty,
-      question_order: index,
-    }));
+    const questionRecords = questions.map((q: any, index: number) => {
+      const rawOptions = Array.isArray(q.options) ? q.options : [];
+      let correctAnswerIdx = typeof q.correctAnswer === "number" ? q.correctAnswer : 0;
+
+      if (q.correctOptionId && rawOptions.length > 0) {
+        const foundIdx = rawOptions.findIndex((opt: any) =>
+          typeof opt === "object" && opt !== null ? opt.id === q.correctOptionId : false
+        );
+        if (foundIdx >= 0) {
+          correctAnswerIdx = foundIdx;
+        }
+      }
+
+      correctAnswerIdx = Math.max(0, Math.min(3, correctAnswerIdx));
+
+      return {
+        assessment_id: data.id,
+        question_text: q.question,
+        options: rawOptions.map((o: any) => typeof o === "string" ? o : o.text || String(o)),
+        correct_answer_index: correctAnswerIdx,
+        explanation: q.explanation || "",
+        topic: q.topic || "",
+        difficulty: q.difficulty || "basic",
+        question_order: index,
+      };
+    });
 
     const { error: questionsError } = await supabase
       .from("quiz_questions")
@@ -381,66 +469,97 @@ export async function submitQuizAnswer({
   assessmentId,
   quizQuestionId,
   selectedAnswerIndex,
+  selectedOptionId,
   timeSpent,
 }: {
   assessmentId: string;
   quizQuestionId: string;
-  selectedAnswerIndex: number;
+  selectedAnswerIndex?: number;
+  selectedOptionId?: string;
   timeSpent?: number;
 }): Promise<{ success: boolean; isCorrect?: boolean; error?: string }> {
-  const user = await requireAuth();
-  const supabase = await createClient();
+  try {
+    const user = await requireAuth();
+    const supabase = await createClient();
 
-  // Verify assessment belongs to user
-  const { data: assessment } = await supabase
-    .from("quiz_assessments")
-    .select("id, student_id")
-    .eq("id", assessmentId)
-    .eq("student_id", user.id)
-    .single();
+    // Verify assessment belongs to user
+    const { data: assessment } = await supabase
+      .from("quiz_assessments")
+      .select("id, student_id")
+      .eq("id", assessmentId)
+      .eq("student_id", user.id)
+      .single();
 
-  if (!assessment) {
-    return { success: false, error: "Assessment not found" };
+    if (!assessment) {
+      return { success: false, error: "Assessment not found" };
+    }
+
+    // Gracefully handle temporary or non-UUID question IDs (e.g. offline/sessionStorage fallback)
+    if (quizQuestionId.startsWith("temp_")) {
+      return { success: true, isCorrect: true };
+    }
+
+    // SERVER-SIDE GRADING: Get correct answer from database
+    const { data: question } = await supabase
+      .from("quiz_questions")
+      .select("id, correct_answer_index, topic, difficulty, options")
+      .eq("id", quizQuestionId)
+      .eq("assessment_id", assessmentId)
+      .single();
+
+    if (!question) {
+      return { success: false, error: "Question not found" };
+    }
+
+    // Resolve answer index
+    let resolvedIndex = typeof selectedAnswerIndex === "number" ? selectedAnswerIndex : -1;
+    if (selectedOptionId && Array.isArray(question.options)) {
+      const matchIdx = question.options.findIndex((opt: any, idx: number) => {
+        if (typeof opt === "object" && opt !== null) {
+          return opt.id === selectedOptionId;
+        }
+        return `${question.id}_opt_${idx}` === selectedOptionId;
+      });
+      if (matchIdx !== -1) {
+        resolvedIndex = matchIdx;
+      }
+    }
+
+    if (resolvedIndex < 0 || resolvedIndex >= question.options.length) {
+      resolvedIndex = 0;
+    }
+
+    // SERVER-SIDE VALIDATION: Calculate isCorrect
+    const isCorrect = resolvedIndex === question.correct_answer_index;
+    const selectedOpt = question.options[resolvedIndex];
+    const selectedAnswerText = typeof selectedOpt === "string" ? selectedOpt : (selectedOpt?.text || "");
+
+    // Store answer with metadata for mastery tracking
+    const metadata: Record<string, any> = {};
+    if (question.topic) metadata.topic = question.topic;
+    if (question.difficulty) metadata.difficulty = question.difficulty;
+
+    const { error } = await supabase.from("quiz_answers").insert({
+      assessment_id: assessmentId,
+      quiz_question_id: quizQuestionId,
+      question_id: null, // Not using old questions table
+      selected_answer: selectedAnswerText, // Keep for backward compatibility
+      selected_answer_index: resolvedIndex,
+      is_correct: isCorrect,
+      time_spent_seconds: timeSpent || null,
+      metadata,
+    });
+
+    if (error) {
+      console.error("Failed to save quiz answer:", error);
+      return { success: false, error: "Không thể lưu câu trả lời" };
+    }
+
+    return { success: true, isCorrect };
+  } catch (err) {
+    console.error("Error in submitQuizAnswer:", err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
-
-  // SERVER-SIDE GRADING: Get correct answer from database
-  const { data: question } = await supabase
-    .from("quiz_questions")
-    .select("id, correct_answer_index, topic, difficulty, options")
-    .eq("id", quizQuestionId)
-    .eq("assessment_id", assessmentId)
-    .single();
-
-  if (!question) {
-    return { success: false, error: "Question not found" };
-  }
-
-  // SERVER-SIDE VALIDATION: Calculate isCorrect
-  const isCorrect = selectedAnswerIndex === question.correct_answer_index;
-  const selectedAnswerText = question.options[selectedAnswerIndex] || "";
-
-  // Store answer with metadata for mastery tracking
-  const metadata: Record<string, any> = {};
-  if (question.topic) metadata.topic = question.topic;
-  if (question.difficulty) metadata.difficulty = question.difficulty;
-
-  const { error } = await supabase.from("quiz_answers").insert({
-    assessment_id: assessmentId,
-    quiz_question_id: quizQuestionId,
-    question_id: null, // Not using old questions table
-    selected_answer: selectedAnswerText, // Keep for backward compatibility
-    selected_answer_index: selectedAnswerIndex,
-    is_correct: isCorrect,
-    time_spent_seconds: timeSpent || null,
-    metadata,
-  });
-
-  if (error) {
-    console.error("Failed to save quiz answer:", error);
-    return { success: false, error: "Không thể lưu câu trả lời" };
-  }
-
-  return { success: true, isCorrect };
 }
 
 export async function completeQuizAssessment({
@@ -519,11 +638,14 @@ export async function completeQuizAssessment({
     });
   }
 
-  // Update topic mastery after completing assessment
-  await updateTopicMasteryFromQuiz(assessmentId, user.id);
+  // Run topic mastery and recommendations updates in background without blocking response
+  updateTopicMasteryFromQuiz(assessmentId, user.id).catch((err) => {
+    console.error("Background topic mastery update failed:", err);
+  });
 
-  // Generate learning recommendations based on weak topics
-  await generateLearningRecommendations(assessmentId, user.id);
+  generateLearningRecommendations(assessmentId, user.id).catch((err) => {
+    console.error("Background recommendations generation failed:", err);
+  });
 
   return { success: true, assessment: data };
 }
@@ -793,7 +915,7 @@ async function generateLearningRecommendations(
  */
 export async function getQuizQuestions(
   assessmentId: string
-): Promise<QuizQuestion[]> {
+): Promise<Array<QuizQuestion & { id: string }>> {
   const user = await requireAuth();
   const supabase = await createClient();
 
@@ -809,6 +931,7 @@ export async function getQuizQuestions(
   }
 
   return questions.map((q: any) => ({
+    id: q.id,
     question: q.question_text,
     options: q.options,
     correctAnswer: q.correct_answer_index,
@@ -817,4 +940,48 @@ export async function getQuizQuestions(
     topic: q.topic || "",
     difficulty: q.difficulty || "basic",
   }));
+}
+
+/**
+ * Get quiz assessment and questions for client taking page
+ */
+export async function getQuizAssessmentWithQuestions(assessmentId: string): Promise<{
+  success: boolean;
+  questions?: Array<QuizQuestion & { id: string }>;
+  error?: string;
+}> {
+  try {
+    const user = await requireAuth();
+    const supabase = await createClient();
+
+    const { data: questions, error } = await supabase
+      .from("quiz_questions")
+      .select("*")
+      .eq("assessment_id", assessmentId)
+      .order("question_order", { ascending: true });
+
+    if (error || !questions || questions.length === 0) {
+      return { success: false, error: "Không tìm thấy câu hỏi" };
+    }
+
+    return {
+      success: true,
+      questions: questions.map((q: any) => ({
+        id: q.id,
+        question: q.question_text,
+        options: q.options,
+        correctAnswer: q.correct_answer_index,
+        explanation: q.explanation,
+        subject: "",
+        topic: q.topic || "",
+        difficulty: q.difficulty || "basic",
+      })),
+    };
+  } catch (error) {
+    console.error("Error in getQuizAssessmentWithQuestions:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

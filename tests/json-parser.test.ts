@@ -191,3 +191,134 @@ describe('JSON Parser - Real World Cases', () => {
     expect(result.data?.questions[0].question).toContain('Đây là câu hỏi');
   });
 });
+
+describe('JSON Parser - Regression & Bad Escaped Character Cases (Task Spec #16)', () => {
+  it('should repair invalid \\frac and \\sqrt without double backslash', () => {
+    // In raw text from LLM, \frac and \sqrt only have single backslashes
+    const raw = '{"questions": [{"question": "Tính \\frac{1}{2} và \\sqrt{x}", "options": ["A", "B", "C", "D"], "correctAnswer": 0}]}';
+    const result = parseAIJSON<{ questions: Array<{ question: string }> }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('\\frac');
+    expect(result.data?.questions[0].question).toContain('\\sqrt');
+  });
+
+  it('should repair unescaped quotes inside string values', () => {
+    const raw = '{"questions": [{"question": "Tìm "giá trị cực đại" của hàm số", "options": ["A", "B", "C", "D"], "correctAnswer": 1}]}';
+    const result = parseAIJSON<{ questions: Array<{ question: string }> }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('giá trị cực đại');
+  });
+
+  it('should repair missing commas between array elements', () => {
+    const raw = '{"questions": [\n{"question": "Q1", "options": ["A", "B", "C", "D"], "correctAnswer": 0}\n{"question": "Q2", "options": ["A", "B", "C", "D"], "correctAnswer": 1}\n]}';
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions).toHaveLength(2);
+  });
+
+  it('should repair missing closing bracket ] and brace }', () => {
+    const raw = '{"questions": [{"question": "Q1", "options": ["A", "B", "C", "D"], "correctAnswer": 0}';
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions).toHaveLength(1);
+  });
+
+  it('should handle raw newline inside JSON string literal', () => {
+    const raw = '{"questions": [{"question": "Dòng 1\nDòng 2", "options": ["A", "B", "C", "D"], "correctAnswer": 0}]}';
+    const result = parseAIJSON<{ questions: Array<{ question: string }> }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('Dòng 1');
+  });
+
+  it('should extract JSON from markdown fences', () => {
+    const raw = '```json\n{"questions": [{"question": "Câu hỏi trong fence", "options": ["A", "B", "C", "D"], "correctAnswer": 0}]}\n```';
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions).toHaveLength(1);
+  });
+});
+
+describe('JSON Parser - STEM Content Verification (Task Spec #15)', () => {
+  it('should parse Math formulas: √(x² + 1), x² + 2x + 1, Δ = b² - 4ac', () => {
+    const raw = JSON.stringify({
+      questions: [
+        {
+          question: "Tính đạo hàm của √(x² + 1)",
+          options: ["x² + 2x + 1", "Δ = b² - 4ac", "x / √(x² + 1)", "2x"],
+          correctAnswer: 2,
+          explanation: "Áp dụng quy tắc đạo hàm hàm hợp",
+        },
+      ],
+    });
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('√(x² + 1)');
+    expect(result.data?.questions[0].options[1]).toContain('Δ = b² - 4ac');
+  });
+
+  it('should parse Physics formulas: v = Δs/Δt, F = ma, U = IR, λ = v/f', () => {
+    const raw = JSON.stringify({
+      questions: [
+        {
+          question: "Vận tốc trung bình được xác định bởi v = Δs/Δt",
+          options: ["F = ma", "U = IR", "λ = v/f", "Tất cả đều đúng"],
+          correctAnswer: 3,
+          explanation: "Các định luật cơ bản của vật lý",
+        },
+      ],
+    });
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('v = Δs/Δt');
+    expect(result.data?.questions[0].options[0]).toContain('F = ma');
+    expect(result.data?.questions[0].options[1]).toContain('U = IR');
+    expect(result.data?.questions[0].options[2]).toContain('λ = v/f');
+  });
+
+  it('should parse Chemistry formulas: H₂SO₄, SO₄²⁻, Fe³⁺, CH₃COOH, C₆H₅OH', () => {
+    const raw = JSON.stringify({
+      questions: [
+        {
+          question: "Ion nào sau đây có điện tích 3+: Fe³⁺ hay SO₄²⁻?",
+          options: ["H₂SO₄", "SO₄²⁻", "Fe³⁺", "CH₃COOH phản ứng C₆H₅OH"],
+          correctAnswer: 2,
+          explanation: "Fe³⁺ là cation sắt (III)",
+        },
+      ],
+    });
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toContain('Fe³⁺');
+    expect(result.data?.questions[0].options[0]).toContain('H₂SO₄');
+    expect(result.data?.questions[0].options[1]).toContain('SO₄²⁻');
+    expect(result.data?.questions[0].options[3]).toContain('CH₃COOH');
+    expect(result.data?.questions[0].options[3]).toContain('C₆H₅OH');
+  });
+
+  it('should parse mixed STEM formula: Tính √(x² + 4) khi x = 3', () => {
+    const raw = JSON.stringify({
+      questions: [
+        {
+          question: "Tính √(x² + 4) khi x = 3.",
+          options: ["√13", "5", "7", "25"],
+          correctAnswer: 0,
+          explanation: "Thay x = 3 vào ta có √(3² + 4) = √(9 + 4) = √13.",
+        },
+      ],
+    });
+    const result = parseAIJSON<{ questions: any[] }>(raw);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.questions[0].question).toBe("Tính √(x² + 4) khi x = 3.");
+    expect(result.data?.questions[0].options[0]).toBe("√13");
+  });
+});

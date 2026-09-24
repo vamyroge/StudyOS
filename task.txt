@@ -1,78 +1,358 @@
-Fix triệt để lỗi tạo Quick Quiz:
+Bạn hãy triển khai tính năng **Student Context / Learning Memory** cho StudyOS.
 
-`Quick Quiz: Lỗi AI: Bad escaped character in JSON at position 6418 (line 124 column 243)`
+MỤC TIÊU:
+AI Tutor phải có khả năng đọc và sử dụng dữ liệu học tập thực tế của USER hiện tại từ database để trả lời và tư vấn cá nhân hóa. Không được hard-code dữ liệu và không được lấy dữ liệu của user khác.
 
-Mục tiêu: Quick Quiz phải tạo và render quiz ổn định kể cả khi câu hỏi/đáp án chứa công thức Toán, Lý, Hóa, ký hiệu đặc biệt, Unicode, LaTeX, dấu ngoặc kép, backslash, newline hoặc nội dung tiếng Việt.
+Hãy tự inspect toàn bộ repository, database schema, Supabase queries, AI orchestrator, API routes và các feature hiện có trước khi sửa code.
 
-Hãy tự kiểm tra toàn bộ flow hiện tại từ:
-AI response → parsing → JSON validation → quiz normalization → database/state → frontend rendering.
+## 1. DỮ LIỆU AI PHẢI ĐỌC ĐƯỢC
 
-Yêu cầu:
+Với mỗi authenticated user, xây dựng một `StudentContext` từ database, ưu tiên các dữ liệu thực tế đang tồn tại:
 
-1. KHÔNG dùng cách sửa lỗi bằng replace chuỗi hoặc try/catch rồi bỏ qua dữ liệu.
-2. Xác định chính xác nguyên nhân `Bad escaped character`.
-3. Không parse JSON bằng các regex mong manh.
-4. Ép AI trả về structured JSON theo schema cố định.
-5. Validate schema trước khi sử dụng dữ liệu.
-6. Xử lý an toàn các ký tự:
+* Profile:
 
-   * `\`
-   * `"`
-   * newline
-   * tab
-   * Unicode
-   * LaTeX như `\frac`, `\sqrt`, `\Delta`, `\rightarrow`
-   * công thức Hóa như `H_2SO_4`, `NaOH`, `CH_3COOH`
-   * công thức Lý/Toán
-7. Nếu provider trả markdown code fence như `json ... ` thì xử lý đúng cách trước khi parse.
-8. Nếu AI trả thêm text ngoài JSON, sử dụng structured output/JSON schema nếu provider hỗ trợ; nếu không thì xây parser an toàn có validation rõ ràng.
-9. Không làm mất công thức hoặc thay đổi nội dung câu hỏi chỉ để JSON parse được.
-10. Thêm fallback/retry khi AI trả malformed JSON. Retry phải yêu cầu model sửa đúng schema thay vì tự đoán hoặc tự sửa nội dung.
-11. Frontend phải render công thức an toàn, không làm crash React.
-12. Kiểm tra cả Quick Quiz và các flow quiz khác để dùng chung một JSON parser/validator nếu phù hợp.
+  * tên
+  * lớp
+  * trường
+  * mục tiêu học tập
+  * môn học
+  * sở thích / ghi chú nếu có
 
-Schema quiz nên có dạng tương đương:
+* Learning progress:
 
-{
-"title": "string",
-"questions": [
-{
-"question": "string",
-"options": ["string", "string", "string", "string"],
-"correctAnswer": 0,
-"explanation": "string"
+  * điểm số
+  * mastery
+  * tiến độ từng môn
+  * tiến độ từng topic/chapter
+  * accuracy
+  * số câu đúng/sai
+  * số lần làm bài
+  * lịch sử attempts
+
+* Quiz:
+
+  * các quiz đã làm
+  * câu hỏi đã trả lời
+  * đáp án user chọn
+  * đáp án đúng
+  * điểm
+  * thời gian làm
+  * topic/môn học
+  * lỗi thường gặp
+
+* Conversation:
+
+  * lịch sử hội thoại học tập liên quan
+  * câu hỏi trước đây
+  * câu trả lời
+  * topic đã hỏi
+  * các vấn đề user thường xuyên hỏi
+
+* Knowledge / learning activity:
+
+  * tài liệu user đã học
+  * topic đã xem
+  * tài liệu đã lưu nếu schema hỗ trợ
+  * lịch sử hoạt động học tập
+
+* Learning analytics:
+
+  * môn mạnh/yếu dựa trên DATA thực tế
+  * topic yếu
+  * lỗi lặp lại
+  * xu hướng tiến bộ
+  * các recommendation đã được tạo nếu có
+
+Chỉ sử dụng những field/table thực sự tồn tại trong database. Nếu một loại dữ liệu chưa tồn tại thì không tự tạo dữ liệu giả.
+
+## 2. KIẾN TRÚC
+
+Tạo một service/server-side layer kiểu:
+
+`buildStudentContext(userId)`
+
+Service này chịu trách nhiệm lấy dữ liệu từ Supabase và tạo context chuẩn cho AI.
+
+Ví dụ cấu trúc:
+
+```ts
+type StudentContext = {
+  profile: ...
+  academicProgress: ...
+  quizHistory: ...
+  conversationHistory: ...
+  learningActivity: ...
+  weaknesses: ...
+  strengths: ...
+  recentActivity: ...
 }
-]
-}
+```
 
-`correctAnswer` phải là số nguyên từ 0 đến 3.
+Không đưa toàn bộ database raw vào prompt.
 
-Đặc biệt: KHÔNG đưa raw LaTeX vào JSON theo cách làm JSON invalid. JSON phải chứa chuỗi hợp lệ; ví dụ backslash trong LaTeX phải được escape đúng theo chuẩn JSON. Sau khi parse xong mới đưa nội dung sang renderer công thức.
+Hãy:
 
-Hãy kiểm tra request/response thực tế của AI provider để xác định chính xác vị trí lỗi thay vì chỉ đoán.
+* query đúng user_id
+* giới hạn dữ liệu lịch sử hợp lý
+* ưu tiên dữ liệu gần đây
+* aggregate dữ liệu khi cần
+* loại bỏ dữ liệu không liên quan
+* tránh prompt quá lớn
 
-Sau khi sửa:
+## 3. SECURITY — BẮT BUỘC
 
-* chạy typecheck
-* chạy lint nếu project có
-* build project
-* test Quick Quiz với ít nhất các trường hợp:
+Đây là phần rất quan trọng.
 
-  1. câu hỏi Toán có `\frac`, `\sqrt`, `\Delta`
-  2. câu Hóa có `H_2SO_4`, `CH_3COOH`
-  3. câu Lý có ký hiệu Hy Lạp
-  4. tiếng Việt có dấu
-  5. câu chứa `"`, `'`, `\`, newline
-  6. AI trả markdown code fence
-  7. AI trả malformed JSON
-  8. quiz nhiều câu dài
+AI chỉ được đọc dữ liệu của authenticated user hiện tại.
 
-Không chỉ che giấu lỗi. Hãy sửa ở tầng tạo/parsing dữ liệu để Quick Quiz hoạt động ổn định lâu dài.
+Không bao giờ cho phép:
+
+```text
+user A → đọc dữ liệu user B
+```
+
+Không tin `userId` do frontend gửi lên.
+
+Lấy user identity từ authenticated Supabase session/server context.
+
+Kiểm tra Row Level Security và authorization.
+
+Mọi query learning data phải được scoped theo authenticated user.
+
+Không expose:
+
+* password
+* auth secrets
+* API keys
+* session tokens
+* dữ liệu riêng tư không cần thiết
+* dữ liệu của user khác
+
+## 4. TÍCH HỢP AI ORCHESTRATOR
+
+Tìm AI orchestration hiện tại của StudyOS.
+
+StudentContext phải được đưa vào pipeline trước khi gọi LLM:
+
+```text
+User Request
+    ↓
+Authentication
+    ↓
+Intent Detection
+    ↓
+Build StudentContext
+    ↓
+Retrieve Relevant Knowledge
+    ↓
+AI Prompt
+    ↓
+LLM
+    ↓
+Guardrails
+    ↓
+Response
+```
+
+AI phải có khả năng hiểu các câu như:
+
+* "Em đang yếu phần nào?"
+* "Hôm nay em nên học gì?"
+* "Tại sao điểm Hóa của em thấp?"
+* "Dựa vào lịch sử làm quiz của em, hãy tạo 10 câu ôn tập."
+* "Em thường sai dạng bài nào?"
+* "So với tuần trước em tiến bộ không?"
+* "Hãy giúp em lập kế hoạch học."
+* "Những kiến thức nào em cần ôn lại?"
+
+Các câu trả lời phải dựa trên database thực tế.
+
+## 5. CONTEXT RELEVANCE
+
+Không phải request nào cũng cần toàn bộ StudentContext.
+
+Thiết kế context selection:
+
+Ví dụ:
+
+Question về quiz
+→ quiz history + mistakes + mastery liên quan
+
+Question về kế hoạch học
+→ progress + weaknesses + recent activity + goals
+
+Question thông thường về kiến thức
+→ knowledge retrieval + chỉ một phần StudentContext cần thiết
+
+Question về lịch sử học tập
+→ learning analytics + attempts + conversations
+
+Mục tiêu là giảm token nhưng vẫn đủ context.
+
+## 6. CONVERSATION MEMORY
+
+Khi user hỏi tiếp:
+
+"vậy phần đó em nên ôn thế nào?"
+
+AI phải hiểu "phần đó" dựa trên conversation hiện tại.
+
+Đồng thời có thể sử dụng lịch sử hội thoại trước đó khi phù hợp.
+
+Không gửi toàn bộ lịch sử chat vô hạn vào prompt.
+
+Implement:
+
+* recent messages
+* relevant conversation retrieval nếu hệ thống đã có vector/search
+* summarization nếu cần
+
+## 7. QUIZ → LEARNING PROFILE
+
+Khi user hoàn thành quiz:
+
+```text
+Quiz Result
+    ↓
+Save attempt
+    ↓
+Update mastery
+    ↓
+Update learning analytics
+    ↓
+StudentContext phản ánh dữ liệu mới
+```
+
+AI không được tự đoán điểm hoặc mastery.
+
+Ví dụ database nói:
+
+```text
+Hóa
+Acid-base: 4/10
+pH: 8/10
+```
+
+AI phải hiểu rằng Acid-base đang yếu hơn pH.
+
+## 8. DASHBOARD VÀ AI PHẢI DÙNG CÙNG NGUỒN DATA
+
+Không được để:
+
+```text
+Dashboard → database
+AI → dữ liệu hard-code khác
+```
+
+Mà phải:
+
+```text
+                 ┌→ Dashboard
+Database ────────┤
+                 └→ StudentContext → AI
+```
+
+Đảm bảo số liệu AI nói ra khớp với số liệu dashboard/database.
+
+## 9. DATA ACCURACY
+
+AI tuyệt đối không được tự bịa:
+
+* điểm
+* mastery
+* số quiz
+* số câu đúng
+* lịch sử học tập
+* môn yếu
+* tiến độ
+
+Nếu database không có dữ liệu:
+
+> "Mình chưa có đủ dữ liệu để đánh giá phần này."
+
+Không được đoán.
+
+## 10. DEBUG / TEST
+
+Tạo test cho:
+
+1. User A chỉ đọc được data A.
+2. User B chỉ đọc được data B.
+3. User chưa có learning data vẫn chat được.
+4. Quiz mới hoàn thành → StudentContext cập nhật.
+5. AI trả lời dựa trên quiz history.
+6. AI nhận diện weakness từ dữ liệu.
+7. Không leak dữ liệu user khác.
+8. Không đưa secret/private auth data vào LLM.
+9. Dashboard và AI dùng cùng số liệu.
+10. Empty/null database không làm AI crash.
+
+Nếu project chưa có test framework, hãy setup test phù hợp với stack hiện tại.
+
+## 11. OBSERVABILITY
+
+Thêm debug/log server-side an toàn để có thể kiểm tra:
+
+```text
+student_context_built
+user_id
+sections_loaded
+quiz_count
+conversation_count
+mastery_count
+context_token_estimate
+```
+
+KHÔNG log password, token, API key hoặc toàn bộ private conversation.
+
+## 12. UI
+
+Nếu cần, thêm một khu vực trong dashboard/profile để user biết AI đang sử dụng những loại dữ liệu nào, ví dụ:
+
+* Hồ sơ học tập
+* Tiến độ môn học
+* Lịch sử quiz
+* Lịch sử học tập
+* Mục tiêu học tập
+
+Không cần expose raw database.
+
+## 13. QUY TẮC IMPLEMENTATION
+
+Không chỉ viết TODO.
+
+Hãy trực tiếp:
+
+1. Inspect code.
+2. Xác định schema hiện tại.
+3. Xác định AI pipeline hiện tại.
+4. Implement StudentContext.
+5. Connect vào AI orchestrator.
+6. Fix authorization/RLS nếu cần.
+7. Connect quiz/history/progress.
+8. Add tests.
+9. Run typecheck.
+10. Run lint.
+11. Run build.
+12. Fix tất cả lỗi phát sinh.
+
+Không phá vỡ các feature hiện tại.
+
+Nếu schema hiện tại khác với giả định trên, hãy dùng schema thực tế của repository thay vì tự tạo schema mới.
 
 Sau khi hoàn thành, báo cáo:
 
-* nguyên nhân gốc
-* file đã sửa
-* cách xử lý JSON
-* cách xử lý LaTeX/ký tự đặc biệt
-* kết quả test/build.
+* files đã thay đổi
+* database tables đã sử dụng
+* StudentContext gồm những gì
+* AI hiện đọc được dữ liệu gì
+* security/RLS đã kiểm tra gì
+* tests đã chạy
+* các phần còn thiếu nếu có
+
+ƯU TIÊN:
+Security > Data accuracy > Correct database integration > AI context quality > Performance > UI.
+
+Mục tiêu cuối cùng:
+
+**StudyOS AI phải thực sự "biết học sinh này đang học như thế nào" dựa trên dữ liệu database thật, chứ không chỉ biết tên và profile của họ.**

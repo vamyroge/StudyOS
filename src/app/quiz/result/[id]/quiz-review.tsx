@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/async-client";
+import { createClient } from "@/lib/supabase/client";
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
@@ -228,7 +228,7 @@ export function QuizReview({ assessmentId }: QuizReviewProps) {
                             <span className="font-semibold text-sm">
                               {String.fromCharCode(65 + optIdx)}.
                             </span>
-                            <span className="text-sm flex-1">{option}</span>
+                            <span className="text-sm flex-1">{typeof option === "string" ? option : (option as any)?.text || ""}</span>
                             {isCorrectAnswer && (
                               <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                             )}

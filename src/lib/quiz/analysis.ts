@@ -3,7 +3,7 @@
  * PHASE 2-3: Enhanced Quiz Result Experience
  */
 
-import { createClient } from "@/lib/supabase/async-client";
+import { createClient } from "@/lib/supabase/server";
 
 export interface QuizResultAnalysis {
   performance: "strong" | "average" | "weak";
@@ -158,7 +158,8 @@ export async function analyzeQuizResult(
       .select("score")
       .eq("subject_id", assessment.subject_id)
       .eq("quiz_type", assessment.quiz_type)
-      .not("completed_at", "is", null);
+      .not("completed_at", "is", null)
+      .limit(50);
 
     if (classStats && classStats.length > 0) {
       const scores = classStats.map((s) => s.score).sort((a, b) => a - b);

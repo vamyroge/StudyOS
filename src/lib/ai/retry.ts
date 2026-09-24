@@ -1,7 +1,7 @@
 import { AIProviderError, toAIProviderError } from "./errors";
 
-export const MAX_AI_RETRIES = 5;
-const DEFAULT_RETRY_BUDGET_MS = 120_000;
+export const MAX_AI_RETRIES = 2;
+const DEFAULT_RETRY_BUDGET_MS = 30_000;
 
 function getRetryBudgetMs(): number {
   const value = Number.parseInt(process.env.AI_RETRY_BUDGET_MS || "", 10);

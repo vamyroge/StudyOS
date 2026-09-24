@@ -14,13 +14,19 @@ export interface AIMessage {
   content: string;
 }
 
+export type AIResponseFormat =
+  | "text"
+  | "json_object"
+  | { type: "json_object" }
+  | { type: "json_schema"; json_schema: Record<string, unknown> };
+
 export interface AICompletionRequest {
   messages: AIMessage[];
   model?: string;
   maxTokens?: number;
   temperature?: number;
   stream?: boolean;
-  responseFormat?: "text" | "json_object";
+  responseFormat?: AIResponseFormat;
 }
 
 export interface AICompletionResponse {

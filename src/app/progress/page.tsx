@@ -3,17 +3,41 @@ import { createClient } from "@/lib/supabase/server";
 import { ProtectedLayout } from "@/components/protected-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Target, BookOpen, Brain, AlertCircle, Calendar } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { TrendingUp, Target, BookOpen, Brain, AlertCircle, Calendar, Award, ThumbsUp, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { getStudentStrengths, getStudentWeaknesses, getImprovementRecords, getTrendBadge } from "@/lib/learning/strength-weakness";
+import { getRecentQuizPerformance, getSubjectPerformance, getOverallPerformance } from "@/lib/dashboard/analytics";
+import { getTopicMastery } from "@/lib/dashboard/service";
+import { PerformanceChart } from "@/components/dashboard/performance-chart";
+import { formatPercentage, formatScore } from "@/lib/utils";
 
 export default async function ProgressPage() {
   const user = await requireAuth();
   const supabase = await createClient();
 
-  const [{ data: attempts }, { data: mastery }] = await Promise.all([
+  // PHASE 10: Enhanced analytics data
+  const [
+    { data: attempts },
+    { data: mastery },
+    strengths,
+    weaknesses,
+    improvements,
+    recentPerformance,
+    subjectPerformance,
+    overallPerformance,
+    topicMastery,
+  ] = await Promise.all([
     supabase.from("attempts").select("*").eq("student_id", user.id).order("created_at", { ascending: false }).limit(50),
     supabase.from("student_mastery").select("concept_id, mastery_level, last_assessed_at").eq("student_id", user.id).order("mastery_level", { ascending: false }),
+    getStudentStrengths(user.id, 10),
+    getStudentWeaknesses(user.id, 10),
+    getImprovementRecords(user.id, 10),
+    getRecentQuizPerformance(user.id, 14),
+    getSubjectPerformance(user.id),
+    getOverallPerformance(user.id),
+    getTopicMastery(user.id),
   ]);
 
   const totalAttempts = attempts?.length ?? 0;
@@ -40,19 +64,19 @@ export default async function ProgressPage() {
           </p>
         </div>
 
-        {/* Overall Stats */}
+        {/* PHASE 10: Enhanced Overall Stats */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <BookOpen className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Tổng lượt làm</CardTitle>
+                <CardTitle className="text-sm font-medium">Tổng quiz</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalAttempts}</div>
+              <div className="text-2xl font-bold">{overallPerformance.totalQuizzes}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {correctAttempts} câu đúng
+                {overallPerformance.totalQuestions} câu hỏi
               </p>
             </CardContent>
           </Card>
@@ -61,15 +85,15 @@ export default async function ProgressPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Target className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Độ chính xác</CardTitle>
+                <CardTitle className="text-sm font-medium">Độ chính xác TB</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{accuracy}%</div>
+              <div className="text-2xl font-bold">{formatPercentage(overallPerformance.averageAccuracy)}</div>
               <div className="mt-2 h-2 w-full rounded-full bg-muted">
                 <div
                   className="h-2 rounded-full bg-primary transition-all"
-                  style={{ width: `${accuracy}%` }}
+                  style={{ width: overallPerformance.averageAccuracy !== null ? `${overallPerformance.averageAccuracy}%` : "0%" }}
                 />
               </div>
             </CardContent>
@@ -78,14 +102,14 @@ export default async function ProgressPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Brain className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Đã thành thạo</CardTitle>
+                <Award className="h-4 w-4" />
+                <CardTitle className="text-sm font-medium">Điểm cao nhất</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{masteredCount}</div>
+              <div className="text-2xl font-bold text-green-600">{overallPerformance.bestScore !== null ? Math.round(overallPerformance.bestScore) : "Chưa có dữ liệu"}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Concepts ≥80%
+                / {overallPerformance.worstScore !== null ? overallPerformance.worstScore : "N/A"} thấp nhất
               </p>
             </CardContent>
           </Card>
@@ -93,18 +117,164 @@ export default async function ProgressPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <AlertCircle className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Cần ôn tập</CardTitle>
+                <TrendingUp className="h-4 w-4" />
+                <CardTitle className="text-sm font-medium">Xu hướng</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{needsReviewCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Concepts &lt;50%
-              </p>
+              {overallPerformance.improvementRate !== null ? (
+                <>
+                  <div className={`text-2xl font-bold ${overallPerformance.improvementRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {overallPerformance.improvementRate >= 0 ? '+' : ''}{Math.round(overallPerformance.improvementRate)}%
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {overallPerformance.improvementRate >= 0 ? 'Đang tiến bộ' : 'Cần cải thiện'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-muted-foreground">Chưa có dữ liệu</div>
+                  <p className="text-xs text-muted-foreground mt-1">Cần ít nhất 6 quiz để so sánh</p>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
+
+        {/* PHASE 10: Performance Chart */}
+        <PerformanceChart data={recentPerformance} />
+
+        {/* PHASE 10: Subject Performance */}
+        {subjectPerformance.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Tiến trình theo môn học</CardTitle>
+              <CardDescription>Phân tích chi tiết từng môn</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {subjectPerformance.map((subject) => {
+                  const getTrendIcon = () => {
+                    if (subject.trend === 'improving') return '📈';
+                    if (subject.trend === 'declining') return '📉';
+                    return '➡️';
+                  };
+                  
+                  return (
+                    <div key={subject.subjectId} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{subject.subjectName}</h3>
+                            <span>{getTrendIcon()}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {subject.totalQuizzes} quiz • {subject.correctAnswers}/{subject.totalQuestions} đúng
+                          </p>
+                        </div>
+                        <Badge variant={subject.averageAccuracy >= 70 ? "success" : subject.averageAccuracy >= 50 ? "warning" : "destructive"}>
+                          {Math.round(subject.averageAccuracy)}%
+                        </Badge>
+                      </div>
+                      <Progress value={subject.averageAccuracy} className="h-2" />
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* PHASE 10: Strengths & Weaknesses */}
+        {(strengths.length > 0 || weaknesses.length > 0) && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Strengths */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ThumbsUp className="h-5 w-5 text-green-600" />
+                  Điểm mạnh
+                </CardTitle>
+                <CardDescription>
+                  Topics bạn đang thể hiện tốt
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {strengths.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    Làm thêm quiz để xác định điểm mạnh
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {strengths.map((strength) => {
+                      const trendBadge = getTrendBadge(strength.trend);
+                      return (
+                        <div key={strength.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{strength.topicName}</p>
+                                <span className="text-xs">{trendBadge.icon}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {strength.subjectName} • {strength.correctAttempts}/{strength.totalAttempts}
+                              </p>
+                            </div>
+                            <Badge variant="success">{Math.round(strength.recentAccuracy * 100)}%</Badge>
+                          </div>
+                          <Progress value={strength.recentAccuracy * 100} className="h-2" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Weaknesses */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
+                  Cần cải thiện
+                </CardTitle>
+                <CardDescription>
+                  Topics cần tập trung ôn luyện
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {weaknesses.length === 0 ? (
+                  <div className="rounded-lg bg-green-50 dark:bg-green-950 p-4 text-sm text-green-900 dark:text-green-100">
+                    🎉 Tuyệt vời! Không có điểm yếu rõ rệt
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {weaknesses.map((weakness) => {
+                      const trendBadge = getTrendBadge(weakness.trend);
+                      return (
+                        <div key={weakness.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{weakness.topicName}</p>
+                                <span className="text-xs">{trendBadge.icon}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {weakness.subjectName} • {weakness.correctAttempts}/{weakness.totalAttempts}
+                              </p>
+                            </div>
+                            <Badge variant="destructive">{Math.round(weakness.recentAccuracy * 100)}%</Badge>
+                          </div>
+                          <Progress value={weakness.recentAccuracy * 100} className="h-2" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Subject Breakdown */}
         {subjectStats.length > 0 && (

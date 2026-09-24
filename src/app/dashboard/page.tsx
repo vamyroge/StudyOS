@@ -1,5 +1,10 @@
 import { requireAuth, getProfile } from "@/lib/auth/utils";
 import { getStudentStats, getStudentMastery, getRecommendations, getTopicMastery } from "@/lib/dashboard/service";
+import { getStudentStreak, getDailyActivities, hasActivityToday, getNextMilestone } from "@/lib/learning/streak";
+import { getStudentStrengths, getStudentWeaknesses, getTrendBadge } from "@/lib/learning/strength-weakness";
+import { getRecentQuizPerformance, getSubjectPerformance, getOverallPerformance } from "@/lib/dashboard/analytics";
+import { getDailyRecommendations, getTodayFocusMessage } from "@/lib/learning/daily-recommendations";
+import { formatPercentage, formatScore } from "@/lib/utils";
 import { Sidebar } from "@/components/sidebar";
 import { LoadingLink } from "@/components/ui/loading-link";
 import { PageLoaded } from "@/components/page-loaded";
@@ -7,7 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { BookOpen, Brain, Target, AlertCircle, MessageCircle, TrendingUp, Sparkles, Award, AlertTriangle } from "lucide-react";
+import { BookOpen, Brain, Target, AlertCircle, MessageCircle, TrendingUp, Sparkles, Award, AlertTriangle, ThumbsUp, Target as TargetIcon } from "lucide-react";
+import { StreakDisplay } from "@/components/learning/streak-display";
+import { CalendarHeatmap } from "@/components/learning/calendar-heatmap";
+import { DashboardStreakSection } from "./streak-section";
+import { PerformanceChart } from "@/components/dashboard/performance-chart";
+import { SubjectPerformanceCard } from "@/components/dashboard/subject-performance";
+import Link from "next/link";
 
 export default async function DashboardPage() {
   const user = await requireAuth();
@@ -16,6 +27,27 @@ export default async function DashboardPage() {
   const recommendations = await getRecommendations(user.id);
   const topicMastery = await getTopicMastery(user.id);
   const profile = await getProfile(user.id);
+  
+  // PHASE 1: Learning Streak data
+  const streak = await getStudentStreak(user.id);
+  const accountStartDate = profile?.created_at ? new Date(profile.created_at).toISOString().split("T")[0] : undefined;
+  const daysSinceJoin = accountStartDate ? Math.ceil((Date.now() - new Date(accountStartDate).getTime()) / (1000 * 60 * 60 * 24)) : 365;
+  const dailyActivities = await getDailyActivities(user.id, Math.min(daysSinceJoin, 365));
+  const hasToday = await hasActivityToday(user.id);
+  const nextMilestone = getNextMilestone(streak.currentStreak);
+  
+  // PHASE 4: Strength/Weakness data
+  const strengths = await getStudentStrengths(user.id, 5);
+  const weaknesses = await getStudentWeaknesses(user.id, 5);
+  
+  // PHASE 5: Quiz Analytics data
+  const recentPerformance = await getRecentQuizPerformance(user.id, 14);
+  const subjectPerformance = await getSubjectPerformance(user.id);
+  const overallPerformance = await getOverallPerformance(user.id);
+  
+  // PHASE 12: Daily recommendations
+  const dailyRecommendations = await getDailyRecommendations(user.id);
+  const todayFocus = await getTodayFocusMessage(user.id);
 
   const masteredCount = mastery.filter((m) => m.mastery_level >= 0.8).length;
   const needsReviewCount = mastery.filter((m) => m.mastery_level < 0.5).length;
@@ -44,8 +76,41 @@ export default async function DashboardPage() {
             </p>
           </div>
 
+          {/* PHASE 12: Today's Focus */}
+          {dailyRecommendations.length > 0 && (
+            <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-blue-600" />
+                  🎯 Hôm nay nên tập trung
+                </CardTitle>
+                <CardDescription>{todayFocus}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dailyRecommendations.slice(0, 3).map((rec, index) => (
+                  <Link key={index} href={rec.actionUrl}>
+                    <div className="rounded-lg border bg-background p-3 transition-all hover:shadow-md hover:border-primary">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{rec.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{rec.description}</p>
+                          <p className="text-xs text-blue-600 mt-2">
+                            ⏱️ {rec.estimatedMinutes} phút • {rec.reason}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                          Ưu tiên {rec.priority}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Stats Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card className="transition-all hover:shadow-md">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -69,7 +134,7 @@ export default async function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.accuracy}%</div>
+                <div className="text-2xl font-bold">{formatPercentage(stats.accuracy)}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {stats.correctAttempts}/{stats.totalAttempts} câu đúng
                 </p>
@@ -86,25 +151,37 @@ export default async function DashboardPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{stats.quizzesTaken}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Điểm TB: {stats.averageQuizScore}/100
+                  Điểm TB: {formatScore(stats.averageQuizScore)}
                 </p>
               </CardContent>
             </Card>
+          </div>
 
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MessageCircle className="h-4 w-4" />
-                  <CardTitle className="text-sm font-medium">Chuỗi học tập</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.studyStreak} 🔥</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.conversationsCount} hội thoại
-                </p>
-              </CardContent>
-            </Card>
+          {/* PHASE 1: Learning Streak Section */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-1">
+              <StreakDisplay
+                currentStreak={streak.currentStreak}
+                bestStreak={streak.bestStreak}
+                totalDaysStudied={streak.totalDaysStudied}
+                hasActivityToday={hasToday}
+                nextMilestone={nextMilestone}
+              />
+            </div>
+            
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lịch hoạt động học tập</CardTitle>
+                  <CardDescription>
+                    Theo dõi chuỗi ngày học liên tiếp của bạn
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DashboardStreakSection activities={dailyActivities} startDate={accountStartDate} />
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           {/* AI Tutor CTA */}
@@ -137,6 +214,12 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
+          {/* PHASE 5: Quiz Analytics Section */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <PerformanceChart data={recentPerformance} />
+            <SubjectPerformanceCard subjects={subjectPerformance} />
+          </div>
+
           {/* Two Column Layout */}
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Recent Attempts */}
@@ -147,39 +230,37 @@ export default async function DashboardPage() {
                   Lần làm gần đây
                 </CardTitle>
                 <CardDescription>
-                  Lịch sử hoạt động của bạn
+                  5 lần làm bài gần nhất của bạn
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {stats.recentAttempts.length === 0 ? (
                   <EmptyState 
-                    message="Chưa có bài làm nào. Bắt đầu luyện tập để theo dõi tiến trình!" 
+                    message="Chưa có bài làm nào. Bắt đầu luyện tập!" 
                     href="/questions"
                     ctaText="Bắt đầu luyện tập"
                   />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {stats.recentAttempts.slice(0, 5).map((attempt) => (
                       <div 
                         key={attempt.id} 
-                        className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors"
                       >
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          attempt.is_correct ? "bg-green-500" : "bg-red-500"
+                        }`} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium font-mono truncate">
+                          <p className="text-sm font-medium truncate text-foreground">
                             #{attempt.question_id.slice(0, 8)}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(attempt.created_at).toLocaleString("vi-VN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              day: "numeric",
-                              month: "short"
-                            })}
-                          </p>
                         </div>
-                        <Badge variant={attempt.is_correct ? "success" : "destructive"}>
-                          {attempt.is_correct ? "Đúng" : "Sai"}
-                        </Badge>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(attempt.created_at).toLocaleTimeString("vi-VN", {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -224,8 +305,125 @@ export default async function DashboardPage() {
             </Card>
           </div>
 
-          {/* Topics Mastery Section */}
-          {topicMastery.length > 0 && (
+          {/* PHASE 4: Advanced Strengths & Weaknesses Section */}
+          {(strengths.length > 0 || weaknesses.length > 0) && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Strengths */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ThumbsUp className="h-5 w-5 text-green-600" />
+                    Điểm mạnh
+                  </CardTitle>
+                  <CardDescription>
+                    Các chủ đề bạn đang thể hiện tốt
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {strengths.length === 0 ? (
+                    <EmptyState 
+                      message="Tiếp tục làm quiz để xác định điểm mạnh!" 
+                      href="/quiz"
+                      ctaText="Làm quiz"
+                    />
+                  ) : (
+                    <div className="space-y-4">
+                      {strengths.map((strength) => {
+                        const trendBadge = getTrendBadge(strength.trend);
+                        return (
+                          <div key={strength.id} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium truncate">
+                                    {strength.topicName}
+                                  </p>
+                                  <span className="text-xs">{trendBadge.icon}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {strength.subjectName} • {strength.totalAttempts} câu • Độ tin cậy: {Math.round(strength.confidence * 100)}%
+                                </p>
+                              </div>
+                              <Badge variant="success" className="ml-2">
+                                {Math.round(strength.recentAccuracy * 100)}%
+                              </Badge>
+                            </div>
+                            <Progress value={strength.recentAccuracy * 100} className="h-2 bg-green-100 dark:bg-green-900" />
+                            {strength.consecutiveCorrect >= 3 && (
+                              <p className="text-xs text-green-600 dark:text-green-400">
+                                🔥 {strength.consecutiveCorrect} câu đúng liên tiếp!
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Weaknesses */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-orange-600" />
+                    Điểm cần cải thiện
+                  </CardTitle>
+                  <CardDescription>
+                    Các chủ đề cần tập trung ôn luyện
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {weaknesses.length === 0 ? (
+                    <div className="rounded-lg bg-green-50 dark:bg-green-950 p-4 text-sm text-green-900 dark:text-green-100">
+                      🎉 Tuyệt vời! Bạn không có điểm yếu rõ rệt. Hãy tiếp tục duy trì!
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {weaknesses.map((weakness) => {
+                        const trendBadge = getTrendBadge(weakness.trend);
+                        return (
+                          <div key={weakness.id} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium truncate">
+                                    {weakness.topicName}
+                                  </p>
+                                  <span className="text-xs">{trendBadge.icon}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {weakness.subjectName} • {weakness.correctAttempts}/{weakness.totalAttempts} đúng
+                                </p>
+                              </div>
+                              <Badge variant="destructive" className="ml-2">
+                                {Math.round(weakness.recentAccuracy * 100)}%
+                              </Badge>
+                            </div>
+                            <Progress value={weakness.recentAccuracy * 100} className="h-2 bg-red-100 dark:bg-red-900" />
+                            {weakness.trend === 'improving' && (
+                              <p className="text-xs text-green-600 dark:text-green-400">
+                                👏 Đang tiến bộ! Tiếp tục phát huy!
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <LoadingLink href="/tutor" className="block">
+                        <Button variant="outline" size="sm" className="w-full mt-2">
+                          <Brain className="h-4 w-4 mr-2" />
+                          Hỏi AI Tutor về chủ đề yếu
+                        </Button>
+                      </LoadingLink>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Topics Mastery Section (fallback if no strengths/weaknesses data) */}
+          {strengths.length === 0 && weaknesses.length === 0 && topicMastery.length > 0 && (
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Strong Topics */}
               <Card>

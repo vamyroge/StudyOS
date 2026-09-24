@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { calculatePercentage } from "@/lib/utils";
 
 export interface StudentStats {
   totalAttempts: number;
   correctAttempts: number;
-  accuracy: number;
+  accuracy: number | null;
   recentAttempts: Array<{
     id: string;
     question_id: string;
@@ -11,75 +12,57 @@ export interface StudentStats {
     created_at: string;
   }>;
   quizzesTaken: number;
-  averageQuizScore: number;
+  averageQuizScore: number | null;
   conversationsCount: number;
-  studyStreak: number;
 }
 
 export async function getStudentStats(studentId: string): Promise<StudentStats> {
   const supabase = await createClient();
-  
-  // Get attempts
-  const { data: attempts } = await supabase
+
+  const { count: totalCount } = await supabase
+    .from("attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  const { count: correctCount } = await supabase
+    .from("attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId)
+    .eq("is_correct", true);
+
+  const { data: recentAttempts } = await supabase
     .from("attempts")
     .select("id, question_id, is_correct, created_at")
     .eq("student_id", studentId)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(10);
 
-  // Get quiz stats
   const { data: quizzes } = await supabase
     .from("quiz_assessments")
     .select("score, completed_at")
     .eq("student_id", studentId)
     .not("completed_at", "is", null);
 
-  // Get conversations count
   const { count: conversationsCount } = await supabase
     .from("conversations")
     .select("*", { count: "exact", head: true })
     .eq("user_id", studentId);
 
-  // Calculate study streak (days with activity)
-  const { data: recentActivity } = await supabase
-    .from("attempts")
-    .select("created_at")
-    .eq("student_id", studentId)
-    .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-    .order("created_at", { ascending: false });
-
-  let studyStreak = 0;
-  if (recentActivity && recentActivity.length > 0) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let currentDate = today;
-    
-    const activityDates = new Set(
-      recentActivity.map(a => new Date(a.created_at).toDateString())
-    );
-
-    while (activityDates.has(currentDate.toDateString())) {
-      studyStreak++;
-      currentDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
-    }
-  }
-
-  const total = attempts?.length || 0;
-  const correct = attempts?.filter((a) => a.is_correct).length || 0;
-  const quizzesTaken = quizzes?.length || 0;
+  const total = totalCount ?? 0;
+  const correct = correctCount ?? 0;
+  const quizzesTaken = quizzes?.length ?? 0;
   const avgQuizScore = quizzesTaken > 0
     ? Math.round(quizzes!.reduce((sum, q) => sum + q.score, 0) / quizzesTaken)
-    : 0;
+    : null;
 
   return {
     totalAttempts: total,
     correctAttempts: correct,
-    accuracy: total > 0 ? Math.round((correct / total) * 100) : 0,
-    recentAttempts: attempts?.slice(0, 10) || [],
+    accuracy: calculatePercentage(correct, total),
+    recentAttempts: recentAttempts ?? [],
     quizzesTaken,
     averageQuizScore: avgQuizScore,
-    conversationsCount: conversationsCount || 0,
-    studyStreak,
+    conversationsCount: conversationsCount ?? 0,
   };
 }
 

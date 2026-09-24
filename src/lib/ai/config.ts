@@ -28,7 +28,7 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> 
 };
 
 export function getAIConfig(): AIConfig {
-  const provider = (process.env.AI_PROVIDER || "xkiro") as AIProvider;
+  const provider = (process.env.AI_PROVIDER || "9router") as AIProvider;
   const defaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.openrouter;
   const isXkiro = provider === "xkiro";
 

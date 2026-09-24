@@ -84,7 +84,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!success || !questions) {
-        setError(`Lỗi Quick Quiz: ${genError || "Không thể tạo quiz"}`);
+        setError(genError || "Không thể tạo Quick Quiz lúc này. Hãy thử lại.");
         setQuickLoading(false);
         return;
       }
@@ -98,7 +98,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!createSuccess || !assessmentId) {
-        setError(`Lỗi Quick Quiz: ${createError || "Không thể tạo assessment"}`);
+        setError(createError || "Không thể tạo assessment. Hãy thử lại.");
         setQuickLoading(false);
         return;
       }
@@ -137,7 +137,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!success || !questions) {
-        setError(`Lỗi Personalized Quiz: ${genError || "Không thể tạo quiz cá nhân hóa"}`);
+        setError(genError || "Không thể tạo quiz cá nhân hóa lúc này. Hãy thử lại.");
         setPersonalizedLoading(false);
         return;
       }
@@ -151,7 +151,7 @@ export function QuizSetup({ subjects }: QuizSetupProps) {
       });
 
       if (!createSuccess || !assessmentId) {
-        setError(`Lỗi Personalized Quiz: ${createError || "Không thể tạo assessment"}`);
+        setError(createError || "Không thể tạo assessment cá nhân hóa. Hãy thử lại.");
         setPersonalizedLoading(false);
         return;
       }

@@ -35,6 +35,15 @@ export async function createCompletion(
     throw new Error("AI model is not configured. Set AI_MODEL environment variable.");
   }
 
+  function buildResponseFormatPayload(rf?: AICompletionRequest["responseFormat"]) {
+    if (!rf || rf === "text") return undefined;
+    if (rf === "json_object") return { type: "json_object" };
+    if (typeof rf === "object") return rf;
+    return undefined;
+  }
+
+  let responseFormatPayload = buildResponseFormatPayload(request.responseFormat);
+
   let response: Response;
   try {
     response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -49,10 +58,35 @@ export async function createCompletion(
         max_tokens: request.maxTokens || config.maxTokens,
         temperature: request.temperature ?? config.temperature,
         stream: false,
-        ...(request.responseFormat === "json_object" ? { response_format: { type: "json_object" } } : {}),
+        ...(responseFormatPayload ? { response_format: responseFormatPayload } : {}),
       }),
       signal: AbortSignal.timeout(getRequestTimeoutMs()),
     });
+
+    // If json_schema is rejected by provider (400 or 422), fallback to json_object
+    if (
+      !response.ok &&
+      (response.status === 400 || response.status === 422) &&
+      typeof request.responseFormat === "object" &&
+      request.responseFormat.type === "json_schema"
+    ) {
+      response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: request.model || config.model,
+          messages: request.messages,
+          max_tokens: request.maxTokens || config.maxTokens,
+          temperature: request.temperature ?? config.temperature,
+          stream: false,
+          response_format: { type: "json_object" },
+        }),
+        signal: AbortSignal.timeout(getRequestTimeoutMs()),
+      });
+    }
   } catch (error) {
     throw toAIProviderError(error);
   }

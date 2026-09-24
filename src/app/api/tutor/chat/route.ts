@@ -84,40 +84,12 @@ export async function POST(req: Request) {
     content: message.content.slice(0, 1200),
   }));
 
-  // Fetch student profile and privacy settings
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("display_name, username")
-    .eq("id", user.id)
-    .single();
-
-  const { data: studentProfile } = await admin
-    .from("student_profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
+  // Fetch privacy settings only
   const { data: privacySettings } = await admin
     .from("student_profiles")
     .select("id, privacy_settings(*)")
     .eq("user_id", user.id)
     .maybeSingle();
-
-  // Fetch student weaknesses (from mistakes analysis)
-  const { data: weaknesses } = await admin
-    .from("mistakes")
-    .select("concept_id")
-    .eq("student_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  // Enrich profile with user info and weaknesses
-  const enrichedProfile: Record<string, unknown> | null = studentProfile ? {
-    ...studentProfile,
-    display_name: profile?.display_name || profile?.username,
-    username: profile?.username,
-    weaknesses: (weaknesses || []).map((w: { concept_id: string }) => ({ concept_id: w.concept_id })),
-  } : null;
 
   try {
     const { completion, normalized, sources, intent, retryCount } = await orchestrateTutorResponse({
@@ -125,7 +97,6 @@ export async function POST(req: Request) {
       studentId: user.id,
       message: parsed.data.message,
       history,
-      studentProfile: enrichedProfile,
       privacySettings: privacySettings?.privacy_settings?.[0] || null,
     });
 
