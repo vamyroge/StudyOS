@@ -56,11 +56,40 @@ export async function register(formData: FormData): Promise<RegisterResult> {
     password,
     options: {
       data: { username, display_name: username },
-      emailRedirectTo: `${siteConfig.url}/auth/callback?next=/dashboard`,
+      emailRedirectTo: `${siteConfig.url}/auth/callback?next=/verify-email`,
     },
   });
   if (error) return { error: error.message };
   return { success: true, needsEmailConfirmation: !data.session };
+}
+
+export type ResendEmailResult = { error: string } | { success: true };
+
+export async function resendVerificationEmail(email?: string): Promise<ResendEmailResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // If no user session, try to use provided email (from signup flow)
+  const targetEmail = email || user?.email;
+  
+  if (!targetEmail) {
+    return { error: "Không tìm thấy email. Vui lòng đăng ký lại." };
+  }
+
+  if (user?.email_confirmed_at) {
+    return { error: "Email đã được xác minh." };
+  }
+
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: targetEmail,
+    options: {
+      emailRedirectTo: `${siteConfig.url}/auth/callback?next=/verify-email`,
+    },
+  });
+
+  if (error) return { error: error.message };
+  return { success: true };
 }
 
 export async function logout() {

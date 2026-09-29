@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Brain } from "lucide-react";
@@ -8,6 +9,7 @@ import { useLoading } from "@/hooks/use-loading";
 import { register } from "../actions";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const { addLoading, removeLoading } = useLoading();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -15,7 +17,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmationSent, setConfirmationSent] = useState(false);
 
   // Remove loading overlay when page is ready
   useEffect(() => {
@@ -48,9 +49,15 @@ export default function RegisterPage() {
         removeLoading();
         return;
       }
-      setConfirmationSent(true);
-      setLoading(false);
+      // Redirect to verify-email page if email confirmation is needed
+      if (result.needsEmailConfirmation) {
+        removeLoading();
+        router.push("/verify-email");
+        return;
+      }
+      // If no email confirmation needed (auto-confirmed), redirect to dashboard
       removeLoading();
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
@@ -69,12 +76,6 @@ export default function RegisterPage() {
       {error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           {error}
-        </div>
-      )}
-
-      {confirmationSent && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700" role="status">
-          Đã gửi link xác nhận đến email của bạn. Hãy mở email để xác nhận tài khoản trước khi đăng nhập.
         </div>
       )}
 
@@ -129,7 +130,7 @@ export default function RegisterPage() {
             autoComplete="new-password"
           />
         </div>
-        <Button type="submit" className="w-full" disabled={loading || confirmationSent}>
+        <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Đang xử lý..." : "Đăng ký"}
         </Button>
       </form>

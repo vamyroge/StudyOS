@@ -1,358 +1,242 @@
-Bạn hãy triển khai tính năng **Student Context / Learning Memory** cho StudyOS.
+Làm trực tiếp trong project StudyOS hiện tại. Đọc và hiểu toàn bộ auth flow hiện tại trước khi sửa code.
 
 MỤC TIÊU:
-AI Tutor phải có khả năng đọc và sử dụng dữ liệu học tập thực tế của USER hiện tại từ database để trả lời và tư vấn cá nhân hóa. Không được hard-code dữ liệu và không được lấy dữ liệu của user khác.
+Xây dựng flow xác minh email hoàn chỉnh, chuyên nghiệp và production-ready cho StudyOS bằng Supabase Auth.
+
+THÔNG TIN PROJECT:
+- Brand: StudyOS
+- Local: http://localhost:3000
+- Production: https://tryeustudyhub.vercel.app/
+- Auth provider: Supabase Auth
+- Sau khi xác minh: user được đưa tới /verify-email và phải tự bấm "Tiếp tục" để vào /dashboard.
+
+FLOW BẮT BUỘC:
+
+1. User vào /signup.
+2. User nhập form đăng ký hiện tại của StudyOS.
+3. StudyOS gọi Supabase signUp().
+4. Supabase tạo account.
+5. Nếu email confirmation đang bật:
+   → KHÔNG đưa user vào dashboard.
+   → chuyển tới /verify-email hoặc trạng thái chờ xác minh phù hợp.
+6. Supabase gửi email xác minh.
+
+EMAIL VERIFY PHẢI ĐƯỢC THIẾT KẾ LẠI CHUYÊN NGHIỆP:
+
+Brand:
+StudyOS
+
+Email phải có:
+- Logo/tên StudyOS
+- Tiêu đề rõ ràng: "Xác minh email của bạn"
+- Lời chào người dùng
+- Nếu database/auth metadata hiện có tên người dùng thì sử dụng tên đó
+- Nội dung giải thích ngắn gọn rằng user vừa đăng ký StudyOS
+- Nút CTA lớn: "Xác minh email"
+- Thông tin phụ nếu cần về link xác minh
+- Thông báo nếu user không tạo tài khoản thì có thể bỏ qua email
+- Footer StudyOS
+- Responsive trên desktop/mobile
+- Thiết kế đồng bộ với StudyOS, sạch, hiện đại, giống SaaS thật
+
+QUAN TRỌNG:
+Không tự tạo verification token.
+Không tự xác minh email bằng client-side flag.
+Không lưu token verification vào database.
+Supabase Auth phải là nguồn xác thực duy nhất.
+
+LINK TRONG EMAIL:
+
+Khi user bấm "Xác minh email":
+
+Email
+→ Supabase verification flow
+→ callback của StudyOS
+→ xử lý session/code đúng theo Supabase
+→ xác nhận email đã verified
+→ redirect tới:
+
+/verify-email
+
+KHÔNG redirect cuối cùng tới trang Supabase.
+
+PAGE /verify-email:
+
+Thiết kế thành một page hoàn chỉnh của StudyOS.
+
+Trạng thái mặc định:
+- Icon email/check
+- "Xác minh email thành công"
+- Nội dung ngắn:
+  "Email của bạn đã được xác minh. Tài khoản StudyOS đã sẵn sàng."
+- Button chính:
+  "Tiếp tục"
+- Button này đưa user tới:
+  /dashboard
+
+Nếu verification thất bại:
+- Hiển thị trạng thái lỗi rõ ràng
+- Không crash
+- Có nút thử lại/gửi lại email nếu phù hợp
+
+Nếu user truy cập /verify-email khi email chưa verified:
+- Hiển thị trạng thái đang chờ xác minh
+- Có nút "Gửi lại email"
+- Cooldown 60 giây
+- Không spam request
+
+Nếu user đã verified:
+- Hiển thị success state
+- Cho phép bấm "Tiếp tục"
+
+AUTH LOGIC:
+
+Trước khi code, hãy tìm và kiểm tra:
+- signup page/component
+- login
+- Supabase browser client
+- Supabase server client
+- middleware/proxy
+- auth callback hiện tại
+- dashboard protection
+- existing auth hooks/context
+- existing environment variables
+- existing email/auth configuration logic
 
-Hãy tự inspect toàn bộ repository, database schema, Supabase queries, AI orchestrator, API routes và các feature hiện có trước khi sửa code.
+Nếu đã có callback:
+- sửa/tái sử dụng callback hiện tại
+- KHÔNG tạo duplicate callback.
+
+Nếu chưa có callback:
+- tạo callback đúng với kiến trúc Next.js hiện tại.
 
-## 1. DỮ LIỆU AI PHẢI ĐỌC ĐƯỢC
-
-Với mỗi authenticated user, xây dựng một `StudentContext` từ database, ưu tiên các dữ liệu thực tế đang tồn tại:
-
-* Profile:
-
-  * tên
-  * lớp
-  * trường
-  * mục tiêu học tập
-  * môn học
-  * sở thích / ghi chú nếu có
-
-* Learning progress:
-
-  * điểm số
-  * mastery
-  * tiến độ từng môn
-  * tiến độ từng topic/chapter
-  * accuracy
-  * số câu đúng/sai
-  * số lần làm bài
-  * lịch sử attempts
-
-* Quiz:
-
-  * các quiz đã làm
-  * câu hỏi đã trả lời
-  * đáp án user chọn
-  * đáp án đúng
-  * điểm
-  * thời gian làm
-  * topic/môn học
-  * lỗi thường gặp
-
-* Conversation:
-
-  * lịch sử hội thoại học tập liên quan
-  * câu hỏi trước đây
-  * câu trả lời
-  * topic đã hỏi
-  * các vấn đề user thường xuyên hỏi
-
-* Knowledge / learning activity:
-
-  * tài liệu user đã học
-  * topic đã xem
-  * tài liệu đã lưu nếu schema hỗ trợ
-  * lịch sử hoạt động học tập
-
-* Learning analytics:
-
-  * môn mạnh/yếu dựa trên DATA thực tế
-  * topic yếu
-  * lỗi lặp lại
-  * xu hướng tiến bộ
-  * các recommendation đã được tạo nếu có
-
-Chỉ sử dụng những field/table thực sự tồn tại trong database. Nếu một loại dữ liệu chưa tồn tại thì không tự tạo dữ liệu giả.
-
-## 2. KIẾN TRÚC
-
-Tạo một service/server-side layer kiểu:
-
-`buildStudentContext(userId)`
-
-Service này chịu trách nhiệm lấy dữ liệu từ Supabase và tạo context chuẩn cho AI.
-
-Ví dụ cấu trúc:
-
-```ts
-type StudentContext = {
-  profile: ...
-  academicProgress: ...
-  quizHistory: ...
-  conversationHistory: ...
-  learningActivity: ...
-  weaknesses: ...
-  strengths: ...
-  recentActivity: ...
-}
-```
-
-Không đưa toàn bộ database raw vào prompt.
-
-Hãy:
-
-* query đúng user_id
-* giới hạn dữ liệu lịch sử hợp lý
-* ưu tiên dữ liệu gần đây
-* aggregate dữ liệu khi cần
-* loại bỏ dữ liệu không liên quan
-* tránh prompt quá lớn
-
-## 3. SECURITY — BẮT BUỘC
-
-Đây là phần rất quan trọng.
-
-AI chỉ được đọc dữ liệu của authenticated user hiện tại.
-
-Không bao giờ cho phép:
-
-```text
-user A → đọc dữ liệu user B
-```
-
-Không tin `userId` do frontend gửi lên.
-
-Lấy user identity từ authenticated Supabase session/server context.
-
-Kiểm tra Row Level Security và authorization.
-
-Mọi query learning data phải được scoped theo authenticated user.
-
-Không expose:
-
-* password
-* auth secrets
-* API keys
-* session tokens
-* dữ liệu riêng tư không cần thiết
-* dữ liệu của user khác
-
-## 4. TÍCH HỢP AI ORCHESTRATOR
-
-Tìm AI orchestration hiện tại của StudyOS.
-
-StudentContext phải được đưa vào pipeline trước khi gọi LLM:
-
-```text
-User Request
-    ↓
-Authentication
-    ↓
-Intent Detection
-    ↓
-Build StudentContext
-    ↓
-Retrieve Relevant Knowledge
-    ↓
-AI Prompt
-    ↓
-LLM
-    ↓
-Guardrails
-    ↓
-Response
-```
-
-AI phải có khả năng hiểu các câu như:
-
-* "Em đang yếu phần nào?"
-* "Hôm nay em nên học gì?"
-* "Tại sao điểm Hóa của em thấp?"
-* "Dựa vào lịch sử làm quiz của em, hãy tạo 10 câu ôn tập."
-* "Em thường sai dạng bài nào?"
-* "So với tuần trước em tiến bộ không?"
-* "Hãy giúp em lập kế hoạch học."
-* "Những kiến thức nào em cần ôn lại?"
-
-Các câu trả lời phải dựa trên database thực tế.
-
-## 5. CONTEXT RELEVANCE
-
-Không phải request nào cũng cần toàn bộ StudentContext.
-
-Thiết kế context selection:
-
-Ví dụ:
-
-Question về quiz
-→ quiz history + mistakes + mastery liên quan
-
-Question về kế hoạch học
-→ progress + weaknesses + recent activity + goals
-
-Question thông thường về kiến thức
-→ knowledge retrieval + chỉ một phần StudentContext cần thiết
-
-Question về lịch sử học tập
-→ learning analytics + attempts + conversations
-
-Mục tiêu là giảm token nhưng vẫn đủ context.
-
-## 6. CONVERSATION MEMORY
-
-Khi user hỏi tiếp:
-
-"vậy phần đó em nên ôn thế nào?"
-
-AI phải hiểu "phần đó" dựa trên conversation hiện tại.
-
-Đồng thời có thể sử dụng lịch sử hội thoại trước đó khi phù hợp.
-
-Không gửi toàn bộ lịch sử chat vô hạn vào prompt.
-
-Implement:
-
-* recent messages
-* relevant conversation retrieval nếu hệ thống đã có vector/search
-* summarization nếu cần
-
-## 7. QUIZ → LEARNING PROFILE
-
-Khi user hoàn thành quiz:
-
-```text
-Quiz Result
-    ↓
-Save attempt
-    ↓
-Update mastery
-    ↓
-Update learning analytics
-    ↓
-StudentContext phản ánh dữ liệu mới
-```
-
-AI không được tự đoán điểm hoặc mastery.
-
-Ví dụ database nói:
-
-```text
-Hóa
-Acid-base: 4/10
-pH: 8/10
-```
-
-AI phải hiểu rằng Acid-base đang yếu hơn pH.
-
-## 8. DASHBOARD VÀ AI PHẢI DÙNG CÙNG NGUỒN DATA
-
-Không được để:
-
-```text
-Dashboard → database
-AI → dữ liệu hard-code khác
-```
-
-Mà phải:
-
-```text
-                 ┌→ Dashboard
-Database ────────┤
-                 └→ StudentContext → AI
-```
-
-Đảm bảo số liệu AI nói ra khớp với số liệu dashboard/database.
-
-## 9. DATA ACCURACY
-
-AI tuyệt đối không được tự bịa:
-
-* điểm
-* mastery
-* số quiz
-* số câu đúng
-* lịch sử học tập
-* môn yếu
-* tiến độ
-
-Nếu database không có dữ liệu:
-
-> "Mình chưa có đủ dữ liệu để đánh giá phần này."
-
-Không được đoán.
-
-## 10. DEBUG / TEST
-
-Tạo test cho:
-
-1. User A chỉ đọc được data A.
-2. User B chỉ đọc được data B.
-3. User chưa có learning data vẫn chat được.
-4. Quiz mới hoàn thành → StudentContext cập nhật.
-5. AI trả lời dựa trên quiz history.
-6. AI nhận diện weakness từ dữ liệu.
-7. Không leak dữ liệu user khác.
-8. Không đưa secret/private auth data vào LLM.
-9. Dashboard và AI dùng cùng số liệu.
-10. Empty/null database không làm AI crash.
-
-Nếu project chưa có test framework, hãy setup test phù hợp với stack hiện tại.
-
-## 11. OBSERVABILITY
-
-Thêm debug/log server-side an toàn để có thể kiểm tra:
-
-```text
-student_context_built
-user_id
-sections_loaded
-quiz_count
-conversation_count
-mastery_count
-context_token_estimate
-```
-
-KHÔNG log password, token, API key hoặc toàn bộ private conversation.
-
-## 12. UI
-
-Nếu cần, thêm một khu vực trong dashboard/profile để user biết AI đang sử dụng những loại dữ liệu nào, ví dụ:
-
-* Hồ sơ học tập
-* Tiến độ môn học
-* Lịch sử quiz
-* Lịch sử học tập
-* Mục tiêu học tập
-
-Không cần expose raw database.
-
-## 13. QUY TẮC IMPLEMENTATION
-
-Không chỉ viết TODO.
-
-Hãy trực tiếp:
-
-1. Inspect code.
-2. Xác định schema hiện tại.
-3. Xác định AI pipeline hiện tại.
-4. Implement StudentContext.
-5. Connect vào AI orchestrator.
-6. Fix authorization/RLS nếu cần.
-7. Connect quiz/history/progress.
-8. Add tests.
-9. Run typecheck.
-10. Run lint.
-11. Run build.
-12. Fix tất cả lỗi phát sinh.
-
-Không phá vỡ các feature hiện tại.
-
-Nếu schema hiện tại khác với giả định trên, hãy dùng schema thực tế của repository thay vì tự tạo schema mới.
-
-Sau khi hoàn thành, báo cáo:
-
-* files đã thay đổi
-* database tables đã sử dụng
-* StudentContext gồm những gì
-* AI hiện đọc được dữ liệu gì
-* security/RLS đã kiểm tra gì
-* tests đã chạy
-* các phần còn thiếu nếu có
-
-ƯU TIÊN:
-Security > Data accuracy > Correct database integration > AI context quality > Performance > UI.
-
-Mục tiêu cuối cùng:
-
-**StudyOS AI phải thực sự "biết học sinh này đang học như thế nào" dựa trên dữ liệu database thật, chứ không chỉ biết tên và profile của họ.**
+Đảm bảo không tạo:
+- redirect loop
+- duplicate session
+- duplicate auth listener
+- race condition
+- dashboard access trước khi verification nếu confirmation đang bật.
+
+LOCAL + PRODUCTION:
+
+Phải hỗ trợ cả:
+
+Local:
+http://localhost:3000
+
+Production:
+https://tryeustudyhub.vercel.app
+
+KHÔNG hard-code production URL vào logic nếu project đã có environment variable phù hợp.
+
+Kiểm tra và chuẩn hóa:
+- NEXT_PUBLIC_SITE_URL hoặc biến tương đương hiện tại
+- Supabase redirect URL
+- callback URL
+- signup emailRedirectTo
+
+Supabase cần cho phép các redirect URL phù hợp cho:
+http://localhost:3000
+http://localhost:3000/auth/callback
+https://tryeustudyhub.vercel.app
+https://tryeustudyhub.vercel.app/auth/callback
+
+Chỉ thêm những URL thực sự phù hợp với implementation sau khi kiểm tra code.
+
+RESEND EMAIL:
+
+Page /verify-email phải có:
+- "Gửi lại email"
+- loading state
+- cooldown 60 giây
+- success toast/message
+- error handling
+- xử lý rate limit
+- không gửi request tự động liên tục khi page mount.
+
+USER EXPERIENCE:
+
+Giữ UI theo phong cách hiện tại của StudyOS.
+Không tạo page nhìn như template mặc định.
+
+Ưu tiên:
+- clean
+- modern
+- responsive
+- typography rõ
+- spacing tốt
+- animation nhẹ
+- loading state
+- success state
+- error state
+- accessibility cơ bản
+
+DATABASE:
+
+Không tạo migration mới nếu không cần.
+Không thay đổi schema chỉ để phục vụ email verification nếu Supabase Auth hiện tại đã đủ.
+
+BẢO MẬT:
+
+- Không expose service role key.
+- Không log access token hoặc refresh token.
+- Không tin query parameter như một bằng chứng email đã verified.
+- Không bypass Supabase email confirmation.
+- Không dùng localStorage làm nguồn xác thực.
+- Giữ nguyên RLS và auth protection hiện tại.
+- Kiểm tra middleware/proxy để callback và /verify-email không bị chặn sai.
+
+EMAIL CONTENT:
+
+Trong Supabase Email Template → Confirm signup, tạo HTML email hoàn chỉnh thay vì email text mặc định.
+
+Dùng biến Supabase phù hợp, đặc biệt ConfirmationURL.
+Không hard-code verification token.
+Không hard-code localhost vào email template.
+
+Tên hiển thị:
+StudyOS
+
+CTA:
+Xác minh email
+
+Sau khi click:
+→ callback
+→ /verify-email
+→ user thấy "Xác minh email thành công"
+→ user tự bấm "Tiếp tục"
+→ /dashboard
+
+TRƯỚC KHI SỬA:
+Đọc code và xác định kiến trúc auth hiện tại.
+Không đoán file.
+Không rewrite auth nếu không cần.
+
+SAU KHI IMPLEMENT:
+Chạy:
+- typecheck
+- lint
+- test
+- build
+
+Nếu có lỗi:
+- tự sửa
+- chạy lại
+- không dừng ở việc chỉ báo lỗi.
+
+CUỐI CÙNG BÁO CÁO:
+
+1. File đã tạo/sửa.
+2. Auth flow mới hoạt động như thế nào.
+3. Supabase Dashboard cần cấu hình gì.
+4. Environment variables cần kiểm tra.
+5. Cách test local:
+   signup → nhận email → click verify → /verify-email → Tiếp tục → /dashboard.
+6. Cách test production:
+   https://tryeustudyhub.vercel.app/
+7. Kết quả typecheck/lint/test/build.
+
+QUAN TRỌNG NHẤT:
+Đừng chỉ làm UI. Hãy đảm bảo toàn bộ flow từ signup → Supabase email → verification link → callback → verified session → /verify-email → dashboard hoạt động logic và an toàn.
+
+Nếu phát hiện auth architecture hiện tại khác với giả định trên, hãy ưu tiên kiến trúc đang tồn tại của StudyOS và tích hợp flow verification vào đó thay vì phá hoặc viết lại hệ thống auth.
