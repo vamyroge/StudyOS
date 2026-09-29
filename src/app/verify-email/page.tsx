@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Mail, AlertCircle, Loader2 } from "lucide-react";
@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type VerificationState = "checking" | "verified" | "pending" | "error";
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<VerificationState>("checking");
@@ -232,5 +232,24 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center gap-6 rounded-lg border bg-card p-8 text-center shadow-sm">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <div className="flex flex-col gap-2">
+              <h1 className="text-2xl font-bold">Đang tải...</h1>
+            </div>
+          </div>
+        </div>
+      </div>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }
